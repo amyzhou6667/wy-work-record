@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 
-const URL_REGEX = /https:\/\/[a-zA-Z0-9-.]+\.(?:trycloudflare\.com|lhrtunnel\.link|pinggy\.link|serveo\.net)[a-zA-Z0-9-_/]*/;
+const URL_REGEX = /https:\/\/[a-zA-Z0-9-.]+\.(?:trycloudflare\.com|lhrtunnel\.link|lhr\.life|lhr\.pro|pinggy\.link|serveo\.net)[a-zA-Z0-9-_/]*/;
 
 /**
  * 从隧道控制台输出中提取 HTTPS 公网域名
@@ -27,9 +27,10 @@ export class TunnelManager {
   /**
    * 获取或启动公网隧道访问链接
    * @param {number} port 本地端口
+   * @param {number} timeoutMs 等待握手超时时间 (默认 5000ms)
    * @returns {Promise<string|null>}
    */
-  async getPublicUrl(port) {
+  async getPublicUrl(port, timeoutMs = 5000) {
     if (this.publicUrl) {
       return this.publicUrl;
     }
@@ -37,15 +38,14 @@ export class TunnelManager {
     // 尝试启动内置轻量 SSH 穿透通道 (零安装，Windows 内置 OpenSSH)
     return new Promise((resolve) => {
       let resolved = false;
-      const timeout = setTimeout(() => {
+      const timer = setTimeout(() => {
         if (!resolved) {
           resolved = true;
-          resolve(null); // 超时自动降级
+          resolve(null);
         }
-      }, 5000);
+      }, timeoutMs);
 
       try {
-        // 使用 localhost.run 的无需密钥免密反向隧道
         this.process = spawn('ssh', [
           '-o', 'StrictHostKeyChecking=no',
           '-o', 'ServerAliveInterval=30',
@@ -58,7 +58,7 @@ export class TunnelManager {
           const detected = extractPublicUrl(text);
           if (detected && !resolved) {
             resolved = true;
-            clearTimeout(timeout);
+            clearTimeout(timer);
             this.publicUrl = detected;
             resolve(detected);
           }
@@ -70,14 +70,14 @@ export class TunnelManager {
         this.process.on('error', () => {
           if (!resolved) {
             resolved = true;
-            clearTimeout(timeout);
+            clearTimeout(timer);
             resolve(null);
           }
         });
       } catch (e) {
         if (!resolved) {
           resolved = true;
-          clearTimeout(timeout);
+          clearTimeout(timer);
           resolve(null);
         }
       }

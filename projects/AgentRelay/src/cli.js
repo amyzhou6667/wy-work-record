@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
 import os from 'node:os';
+import fs from 'node:fs';
+import path from 'node:path';
 import { PromptDetector } from './detector/index.js';
 import { CloudSyncClient } from './client/sync.js';
 import { RelaySession } from './session.js';
@@ -23,13 +25,27 @@ AgentRelay - 远程 AI 任务伴侣 (MVP)
   --no-sleep-block     禁用自动防休眠保活
 
 示例:
+  node projects/AgentRelay/src/cli.js run "claude"
   node projects/AgentRelay/src/cli.js run "claude-code"
   node projects/AgentRelay/src/cli.js run "antigravity"
 `);
   process.exit(1);
 }
 
-const targetCmd = args[commandIdx + 1];
+let targetCmd = args[commandIdx + 1];
+
+// 智能别名与 Windows 路径解析
+const homeDir = os.homedir();
+const localBinClaude = path.join(homeDir, '.local', 'bin', 'claude.exe');
+
+if (targetCmd === 'claude-code' || targetCmd.startsWith('claude-code ')) {
+  targetCmd = targetCmd.replace(/^claude-code/, fs.existsSync(localBinClaude) ? `"${localBinClaude}"` : 'claude');
+} else if (targetCmd === 'claude' || targetCmd.startsWith('claude ')) {
+  if (fs.existsSync(localBinClaude)) {
+    targetCmd = targetCmd.replace(/^claude/, `"${localBinClaude}"`);
+  }
+}
+
 const taskId = `task_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
 // 1. 激活系统防休眠保活锁
@@ -88,15 +104,16 @@ if (sleepBlocker.isActive()) {
 console.log(`[AgentRelay] 📱 局域网访问入口 (同一 Wi-Fi 或热点直接打开):`);
 console.log(`             👉 \x1b[36m\x1b[1m${lanMobileUrl}\x1b[0m`);
 
-// 异步尝试公网隧道（不阻塞主任务启动）
-tunnelManager.getPublicUrl(relayPort).then((pubUrl) => {
-  if (pubUrl) {
-    const remoteUrl = `${pubUrl}/?task=${taskId}`;
-    console.log(`[AgentRelay] 🌐 全球公网访问入口 (下班回家/手机4G/5G随时随地操控):`);
-    console.log(`             👉 \x1b[32m\x1b[1m${remoteUrl}\x1b[0m`);
-    console.log('='.repeat(65));
-  }
-});
+// 申请全球公网隧道
+console.log(`[AgentRelay] 🌐 正在申请全球公网安全通道...`);
+const pubUrl = await tunnelManager.getPublicUrl(relayPort, 4000);
+if (pubUrl) {
+  const remoteUrl = `${pubUrl}/?task=${taskId}`;
+  console.log(`[AgentRelay] 🌐 全球公网访问入口 (下班回家/手机4G/5G随时随地操控):`);
+  console.log(`             👉 \x1b[32m\x1b[1m${remoteUrl}\x1b[0m`);
+} else {
+  console.log(`[AgentRelay] 💡 提示: 公网通道准备中，您亦可随时使用局域网入口或通过 --public-url 指定域名`);
+}
 
 console.log(`[AgentRelay] 💻 本地调试链接: http://localhost:${relayPort}/?task=${taskId}`);
 console.log('='.repeat(65));
