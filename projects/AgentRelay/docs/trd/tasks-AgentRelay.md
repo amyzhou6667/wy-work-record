@@ -2,7 +2,7 @@
 
 | 责任人 | 关联 PRD | 关联 TRD | 当前状态 |
 | :--- | :--- | :--- | :--- |
-| 研发团队 | [PRD 链接](../prd/PRD-AgentRelay-远程AI任务伴侣.md) | [TRD 链接](./TRD-AgentRelay-技术架构方案.md) | 全部完成 (Passed 9/9) |
+| 研发团队 | [PRD 链接](../prd/PRD-AgentRelay-远程AI任务伴侣.md) | [TRD 链接](./TRD-AgentRelay-技术架构方案.md) | 核心通过 (Passed 12/12) |
 
 ---
 
@@ -33,7 +33,7 @@
   - **实现文件**：`projects/AgentRelay/src/session.js` / `projects/AgentRelay/src/cli.js`
   - **验收命令**：`node --test projects/AgentRelay/tests/e2e.test.js` (通过)。
 
-### 阶段四：方案 A 手机端 H5 响应式卡片与轻量中继服务 (新交付)
+### 阶段四：方案 A 手机端 H5 响应式卡片与轻量中继服务
 - [x] **Task 4.1: 手机端 H5 响应式卡片前端**
   - **实现文件**：`projects/AgentRelay/src/web/index.html`
   - **特性**：微信小程序 UI 风格、自动震动提醒、一键 [同意Y]/[拒绝N]、最近 10 行日志抽屉、紧急刹车按钮。
@@ -41,5 +41,15 @@
   - **测试文件**：`projects/AgentRelay/tests/server.test.js`
   - **实现文件**：`projects/AgentRelay/src/server/index.js`
   - **验收命令**：`node --test projects/AgentRelay/tests/server.test.js` (通过)。
-- [x] **Task 4.3: CLI 自动集成 HTTP 中转与手机端访问地址打印**
-  - **实测验证**：手机端与 PC 端真实通过 HTTP 完成提问接收与 `y` 决策回传闭环！
+
+### 阶段五：回家公网可用性保障 (防休眠 + 公网隧道桥接)
+- [x] **Task 5.1: 跨平台电脑防休眠保活器 (SleepBlocker)**
+  - **测试文件**：`projects/AgentRelay/tests/sleep_blocker.test.js`
+  - **实现文件**：`projects/AgentRelay/src/platform/sleep_blocker.js`
+  - **机制**：Win32 `SetThreadExecutionState`，任务期间禁止 Windows 睡眠，退出自动解除。
+  - **验收命令**：`node --test projects/AgentRelay/tests/sleep_blocker.test.js` (通过)。
+- [x] **Task 5.2: 公网安全穿透与隧道管理器 (TunnelManager)**
+  - **测试文件**：`projects/AgentRelay/tests/tunnel.test.js`
+  - **实现文件**：`projects/AgentRelay/src/platform/tunnel.js`
+  - **特性**：利用系统内置 OpenSSH 支持反向隧道获取全球 HTTPS 地址，支持 `--public-url` 自定义域名。
+  - **验收命令**：`node --test projects/AgentRelay/tests/tunnel.test.js` (通过)。
