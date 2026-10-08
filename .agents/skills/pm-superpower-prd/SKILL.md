@@ -80,8 +80,8 @@ flowchart LR
 在三轮问答形成明确共识后，进入 PRD 输出阶段。
 
 ### 输出动作
-1. **自动生成文件**：在项目的 `docs/prd/` 目录下生成独立的 Markdown 文件，文件命名为：`PRD-<功能/产品名称>-<YYYYMMDD>.md`。
-2. **文档结构规范**（参考 [PRD 模板](./templates/prd-template.md)）：
+1. **自动生成文件**：在对应项目的 `projects/<功能或项目名称>/docs/prd/` 目录下生成独立的 Markdown 文件，文件命名为：`PRD-<功能/产品名称>.md`。
+2. **文档结构规范**（参考 [PRD 模板](../../../workflows/product/templates/prd-template.md)）：
    - **1. 文档基本信息**（名称、版本、作者、状态、更新日志）
    - **2. 需求背景与价值**（痛点背景、业务目标、成功衡量指标 OKR/KPI）
    - **3. 目标用户画像**（角色定义、核心诉求、使用频次）
