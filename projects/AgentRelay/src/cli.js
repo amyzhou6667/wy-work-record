@@ -9,6 +9,8 @@ import { RelaySession } from './session.js';
 import { createRelayServer } from './server/index.js';
 import { SleepBlocker } from './platform/sleep_blocker.js';
 import { TunnelManager } from './platform/tunnel.js';
+import { WechatWorkNotifier } from './notifier/wechat_work.js';
+import { CloudActionBridge } from './platform/cloud_bridge.js';
 
 const args = process.argv.slice(2);
 const commandIdx = args.indexOf('run');
@@ -18,27 +20,48 @@ if (commandIdx === -1 || !args[commandIdx + 1]) {
 AgentRelay - 远程 AI 任务伴侣 (MVP)
 
 使用方法:
-  node projects/AgentRelay/src/cli.js run "<command>"
+  node projects/AgentRelay/src/cli.js run "<command>" [选项]
 
 选项:
-  --public-url <url>   指定固定的公网反向代理或中继域名
-  --no-sleep-block     禁用自动防休眠保活
+  --wechat-webhook <url>  企业微信群机器人 Webhook 链接 (100% 永久免费、免审批、手机直接弹窗)
+  --public-url <url>      指定固定的公网反向代理或中继域名
+  --no-sleep-block        禁用自动防休眠保活
 
 示例:
-  node projects/AgentRelay/src/cli.js run "claude \"帮我实现某个功能\""
-  node projects/AgentRelay/src/cli.js run "antigravity"
-  node projects/AgentRelay/src/cli.js run "node projects/AgentRelay/scratch/mock_agent.js"
+  node projects/AgentRelay/src/cli.js run "claude \"帮我检查代码\"" --wechat-webhook 你的企微Webhook
+  node projects/AgentRelay/src/cli.js run "claude"
 `);
   process.exit(1);
 }
 
 let targetCmd = args[commandIdx + 1].trim();
 
-// 1. 智能别名与 Windows 路径解析
+// 1. 读取企业微信 Webhook 配置 (参数优先 > 环境变量 > 本地已存配置)
 const homeDir = os.homedir();
+const configPath = path.join(homeDir, '.agentrelay', 'config.json');
+let savedConfig = {};
+try {
+  if (fs.existsSync(configPath)) {
+    savedConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  }
+} catch (e) {}
+
+let wechatWebhook = process.env.WECHAT_WORK_WEBHOOK || savedConfig.wechatWebhook || '';
+const webhookIdx = args.indexOf('--wechat-webhook');
+if (webhookIdx !== -1 && args[webhookIdx + 1]) {
+  wechatWebhook = args[webhookIdx + 1];
+  // 自动记住配置，下次免输
+  try {
+    fs.mkdirSync(path.dirname(configPath), { recursive: true });
+    fs.writeFileSync(configPath, JSON.stringify({ ...savedConfig, wechatWebhook }, null, 2));
+  } catch (e) {}
+}
+
+const wechatNotifier = new WechatWorkNotifier({ webhookUrl: wechatWebhook });
+
+// 2. 智能别名与 Windows 路径解析
 const localBinClaude = path.join(homeDir, '.local', 'bin', 'claude.exe');
 
-// 如果输入了 claude-code，自动映射为 claude
 if (targetCmd === 'claude-code' || targetCmd.startsWith('claude-code ')) {
   targetCmd = targetCmd.replace(/^claude-code/, fs.existsSync(localBinClaude) ? `"${localBinClaude}"` : 'claude');
 } else if (targetCmd === 'claude' || targetCmd.startsWith('claude ')) {
@@ -47,7 +70,7 @@ if (targetCmd === 'claude-code' || targetCmd.startsWith('claude-code ')) {
   }
 }
 
-// 2. Claude Code 专用容错：若未传任务提示词，自动补充初始任务，避免因无输入直接退出
+// Claude Code 专用容错：若未传任务提示词，自动补充初始任务
 const cleanCmd = targetCmd.replace(/^"|"$/g, '').trim();
 if (cleanCmd.endsWith('claude.exe') || cleanCmd === 'claude') {
   targetCmd += ' "你好，请列出当前项目状态"';
@@ -55,6 +78,7 @@ if (cleanCmd.endsWith('claude.exe') || cleanCmd === 'claude') {
 }
 
 const taskId = `task_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+const cloudBridge = new CloudActionBridge(taskId);
 
 // 3. 激活系统防休眠保活锁
 const sleepBlocker = new SleepBlocker();
@@ -94,34 +118,30 @@ const lanMobileUrl = lanIps.length > 0
   ? `http://${lanIps[0]}:${relayPort}/?task=${taskId}` 
   : `http://localhost:${relayPort}/?task=${taskId}`;
 
-// 检查自定义公网 URL 或自动获取
-let customPublicUrl = null;
-const publicUrlIdx = args.indexOf('--public-url');
-if (publicUrlIdx !== -1 && args[publicUrlIdx + 1]) {
-  customPublicUrl = args[publicUrlIdx + 1];
-}
-
-const tunnelManager = new TunnelManager({ customUrl: customPublicUrl });
-
 console.log('='.repeat(65));
 console.log(`[AgentRelay] 🚀 正在托管启动任务: ${targetCmd}`);
 console.log(`[AgentRelay] 🆔 会话 ID: ${taskId}`);
+if (wechatWebhook) {
+  console.log(`[AgentRelay] 💬 企业微信强通知: \x1b[32m已开启 (官方机器人 Webhook 已绑定，100% 免费)\x1b[0m`);
+} else {
+  console.log(`[AgentRelay] 💡 提示: 传入 --wechat-webhook <群机器人链接> 可开启手机企业微信实时弹窗提醒`);
+}
 if (sleepBlocker.isActive()) {
   console.log(`[AgentRelay] 🔋 防休眠保活已生效：任务运行期间工位电脑将保持唤醒状态`);
 }
-console.log(`[AgentRelay] 📱 局域网访问入口 (同一 Wi-Fi 或热点直接打开):`);
+console.log(`[AgentRelay] 📱 局域网访问入口 (公司同 Wi-Fi 直连):`);
 console.log(`             👉 \x1b[36m\x1b[1m${lanMobileUrl}\x1b[0m`);
 
 // 申请全球公网隧道
 console.log(`[AgentRelay] 🌐 正在申请全球公网安全通道...`);
-const pubUrl = await tunnelManager.getPublicUrl(relayPort, 4000);
-if (pubUrl) {
-  const remoteUrl = `${pubUrl}/?task=${taskId}`;
-  console.log(`[AgentRelay] 🌐 全球公网访问入口 (下班回家/手机4G/5G随时随地操控):`);
-  console.log(`             👉 \x1b[32m\x1b[1m${remoteUrl}\x1b[0m`);
-} else {
-  console.log(`[AgentRelay] 💡 提示: 公网通道准备中，您亦可随时使用局域网入口或通过 --public-url 指定域名`);
-}
+let activePublicUrl = null;
+const tunnelManager = new TunnelManager({ customUrl: null });
+tunnelManager.getPublicUrl(relayPort, 3500).then((pubUrl) => {
+  if (pubUrl) {
+    activePublicUrl = `${pubUrl}/?task=${taskId}`;
+    console.log(`[AgentRelay] 🌐 全球公网访问入口: 👉 \x1b[32m\x1b[1m${activePublicUrl}\x1b[0m`);
+  }
+});
 
 console.log(`[AgentRelay] 💻 本地调试链接: http://localhost:${relayPort}/?task=${taskId}`);
 console.log('='.repeat(65));
@@ -147,15 +167,32 @@ const child = spawn(targetCmd, {
   stdio: ['pipe', 'pipe', 'pipe']
 });
 
-child.stdout.on('data', (chunk) => {
+child.stdout.on('data', async (chunk) => {
   const text = chunk.toString();
   process.stdout.write(text);
   session.handleOutput(text);
 
   const prompt = detector.evaluatePrompt();
   if (prompt) {
-    console.log(`\n[AgentRelay] 🔔 检测到交互提问阻断，已同步到手机端: "${prompt.question}"`);
+    console.log(`\n[AgentRelay] 🔔 检测到交互提问阻断: "${prompt.question}"`);
     session.handlePromptDetected(prompt);
+
+    // 触发企业微信群机器人 100% 免费强推送
+    if (wechatWebhook) {
+      console.log(`[AgentRelay] 💬 正在向手机企业微信推送卡片通知...`);
+      const targetUrl = activePublicUrl || lanMobileUrl;
+      wechatNotifier.send({
+        command: targetCmd,
+        question: prompt.question,
+        recent_logs: prompt.recent_logs,
+        taskId,
+        remoteUrl: targetUrl
+      }).then((res) => {
+        if (res.ok) {
+          console.log(`[AgentRelay] ✅ 企业微信通知发送成功！手机已响铃弹窗。`);
+        }
+      });
+    }
   }
 });
 
@@ -174,14 +211,25 @@ process.stdin.on('data', (chunk) => {
 
 // 轮询检查远程手机端下发的决策指令
 const pollInterval = setInterval(async () => {
-  const action = await session.tick();
-  if (action === 'KILL') {
+  // 1. 检查本地 Web 中转指令
+  const localAction = await session.tick();
+  
+  // 2. 检查云端双向桥接指令
+  let cloudAction = null;
+  if (session.status === 'WAITING_CONFIRMATION') {
+    cloudAction = await cloudBridge.pollAction();
+  }
+
+  const finalAction = localAction || cloudAction;
+
+  if (finalAction === 'KILL') {
     console.log('\n[AgentRelay] 🛑 收到手机端紧急制动指令，正在中止任务...');
     child.kill('SIGINT');
     clearInterval(pollInterval);
-  } else if (action) {
-    console.log(`\n[AgentRelay] 📱 收到手机端远程决策指令: "${action}"，已注入执行`);
-    child.stdin.write(`${action}\n`);
+  } else if (finalAction) {
+    console.log(`\n[AgentRelay] 📱 收到手机端远程决策指令: "${finalAction}"，已注入执行`);
+    child.stdin.write(`${finalAction}\n`);
+    session.status = 'RUNNING';
   }
 }, 1000);
 
