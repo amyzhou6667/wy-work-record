@@ -2,16 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { extractPublicUrl, TunnelManager } from '../src/platform/tunnel.js';
 
-test('extractPublicUrl: 应当能从隧道输出日志中解析出 HTTPS 公网地址', () => {
-  const logCloudflare = '2026-10-08T08:00:00Z INF +--------------------------------------------------------------------------------------------+\n2026-10-08T08:00:00Z INF |  Your quick Tunnel has been created! Visit it at (it may take some time to be reachable):  |\n2026-10-08T08:00:00Z INF |  https://happy-test-subdomain.trycloudflare.com                                            |\n2026-10-08T08:00:00Z INF +--------------------------------------------------------------------------------------------+';
-  assert.equal(extractPublicUrl(logCloudflare), 'https://happy-test-subdomain.trycloudflare.com');
+test('extractPublicUrl: 应当识别国内 cpolar 域名与常见穿透域名', () => {
+  const cpolarLog = 'Tunnel established at https://9b3c1a2d.cpolar.top -> 127.0.0.1:3300';
+  assert.equal(extractPublicUrl(cpolarLog), 'https://9b3c1a2d.cpolar.top');
 
-  const logLocalhostRun = '980b18214fa35a.lhrtunnel.link tunnel created\nConnect to https://980b18214fa35a.lhrtunnel.link to view.';
-  assert.equal(extractPublicUrl(logLocalhostRun), 'https://980b18214fa35a.lhrtunnel.link');
+  const cpolarCnLog = 'Forwarding https://my-workstation.cpolar.cn -> http://localhost:3300';
+  assert.equal(extractPublicUrl(cpolarCnLog), 'https://my-workstation.cpolar.cn');
 });
 
-test('TunnelManager: 支持配置固定自定义公网 URL', async () => {
-  const manager = new TunnelManager({ customUrl: 'https://my-relay.example.com' });
+test('TunnelManager: 支持配置固定国内云服务器或自建穿透域名', async () => {
+  const manager = new TunnelManager({ customUrl: 'https://relay.my-domestic-server.com' });
   const url = await manager.getPublicUrl(3300);
-  assert.equal(url, 'https://my-relay.example.com');
+  assert.equal(url, 'https://relay.my-domestic-server.com');
 });

@@ -9,8 +9,6 @@ import { RelaySession } from './session.js';
 import { createRelayServer } from './server/index.js';
 import { SleepBlocker } from './platform/sleep_blocker.js';
 import { TunnelManager } from './platform/tunnel.js';
-import { WechatWorkNotifier } from './notifier/wechat_work.js';
-import { CloudActionBridge } from './platform/cloud_bridge.js';
 
 const args = process.argv.slice(2);
 const commandIdx = args.indexOf('run');
@@ -23,43 +21,23 @@ AgentRelay - 远程 AI 任务伴侣 (MVP)
   node projects/AgentRelay/src/cli.js run "<command>" [选项]
 
 选项:
-  --wechat-webhook <url>  企业微信群机器人 Webhook 链接 (100% 永久免费、免审批、手机直接弹窗)
-  --public-url <url>      指定固定的公网反向代理或中继域名
-  --no-sleep-block        禁用自动防休眠保活
+  --public-url <url>   指定国内云服务器或穿透域名 (如 cpolar 国内节点分配的域名)
+  --no-sleep-block     禁用自动防休眠保活
 
 示例:
-  node projects/AgentRelay/src/cli.js run "claude \"帮我检查代码\"" --wechat-webhook 你的企微Webhook
-  node projects/AgentRelay/src/cli.js run "claude"
+  # 托管运行 Claude，自动防休眠保活并在本地+局域网开启手机端服务:
+  node projects/AgentRelay/src/cli.js run "claude \"帮我检查项目代码\""
+
+  # 配合国内云服务器或已开启的 cpolar 穿透域名使用:
+  node projects/AgentRelay/src/cli.js run "claude" --public-url https://xxxx.cpolar.top
 `);
   process.exit(1);
 }
 
 let targetCmd = args[commandIdx + 1].trim();
 
-// 1. 读取企业微信 Webhook 配置 (参数优先 > 环境变量 > 本地已存配置)
+// 1. 智能别名与 Windows 路径解析
 const homeDir = os.homedir();
-const configPath = path.join(homeDir, '.agentrelay', 'config.json');
-let savedConfig = {};
-try {
-  if (fs.existsSync(configPath)) {
-    savedConfig = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-  }
-} catch (e) {}
-
-let wechatWebhook = process.env.WECHAT_WORK_WEBHOOK || savedConfig.wechatWebhook || '';
-const webhookIdx = args.indexOf('--wechat-webhook');
-if (webhookIdx !== -1 && args[webhookIdx + 1]) {
-  wechatWebhook = args[webhookIdx + 1];
-  // 自动记住配置，下次免输
-  try {
-    fs.mkdirSync(path.dirname(configPath), { recursive: true });
-    fs.writeFileSync(configPath, JSON.stringify({ ...savedConfig, wechatWebhook }, null, 2));
-  } catch (e) {}
-}
-
-const wechatNotifier = new WechatWorkNotifier({ webhookUrl: wechatWebhook });
-
-// 2. 智能别名与 Windows 路径解析
 const localBinClaude = path.join(homeDir, '.local', 'bin', 'claude.exe');
 
 if (targetCmd === 'claude-code' || targetCmd.startsWith('claude-code ')) {
@@ -78,15 +56,14 @@ if (cleanCmd.endsWith('claude.exe') || cleanCmd === 'claude') {
 }
 
 const taskId = `task_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-const cloudBridge = new CloudActionBridge(taskId);
 
-// 3. 激活系统防休眠保活锁
+// 2. 激活系统防休眠保活锁
 const sleepBlocker = new SleepBlocker();
 if (!args.includes('--no-sleep-block')) {
   sleepBlocker.enable();
 }
 
-// 4. 启动轻量中继服务与手机端 H5 服务
+// 3. 启动轻量中继服务与手机端 H5 服务
 let relayPort = 3300;
 let serverInstance;
 try {
@@ -99,7 +76,7 @@ try {
   serverInstance = s.server;
 }
 
-// 5. 解析局域网 IP 与公网隧道
+// 4. 解析局域网 IP 与穿透域名
 function getNetworkIps() {
   const interfaces = os.networkInterfaces();
   const ips = [];
@@ -118,28 +95,34 @@ const lanMobileUrl = lanIps.length > 0
   ? `http://${lanIps[0]}:${relayPort}/?task=${taskId}` 
   : `http://localhost:${relayPort}/?task=${taskId}`;
 
+// 读取用户传入的国内云服务器或穿透域名
+let customPublicUrl = null;
+const publicUrlIdx = args.indexOf('--public-url');
+if (publicUrlIdx !== -1 && args[publicUrlIdx + 1]) {
+  customPublicUrl = args[publicUrlIdx + 1];
+}
+
+const tunnelManager = new TunnelManager({ customUrl: customPublicUrl });
+
 console.log('='.repeat(65));
 console.log(`[AgentRelay] 🚀 正在托管启动任务: ${targetCmd}`);
 console.log(`[AgentRelay] 🆔 会话 ID: ${taskId}`);
-if (wechatWebhook) {
-  console.log(`[AgentRelay] 💬 企业微信强通知: \x1b[32m已开启 (官方机器人 Webhook 已绑定，100% 免费)\x1b[0m`);
-} else {
-  console.log(`[AgentRelay] 💡 提示: 传入 --wechat-webhook <群机器人链接> 可开启手机企业微信实时弹窗提醒`);
-}
 if (sleepBlocker.isActive()) {
   console.log(`[AgentRelay] 🔋 防休眠保活已生效：任务运行期间工位电脑将保持唤醒状态`);
 }
-console.log(`[AgentRelay] 📱 局域网访问入口 (公司同 Wi-Fi 直连):`);
+console.log(`[AgentRelay] 📱 局域网访问入口 (公司同 Wi-Fi 或热点直连):`);
 console.log(`             👉 \x1b[36m\x1b[1m${lanMobileUrl}\x1b[0m`);
 
-// 申请全球公网隧道
-console.log(`[AgentRelay] 🌐 正在申请全球公网安全通道...`);
-let activePublicUrl = null;
-const tunnelManager = new TunnelManager({ customUrl: null });
-tunnelManager.getPublicUrl(relayPort, 3500).then((pubUrl) => {
+// 尝试获取国内穿透域名
+tunnelManager.getPublicUrl(relayPort).then((pubUrl) => {
   if (pubUrl) {
-    activePublicUrl = `${pubUrl}/?task=${taskId}`;
-    console.log(`[AgentRelay] 🌐 全球公网访问入口: 👉 \x1b[32m\x1b[1m${activePublicUrl}\x1b[0m`);
+    const remoteUrl = `${pubUrl}/?task=${taskId}`;
+    console.log(`[AgentRelay] 🌐 国内穿透访问入口 (手机 4G/5G 流量极速秒开):`);
+    console.log(`             👉 \x1b[32m\x1b[1m${remoteUrl}\x1b[0m`);
+    console.log('='.repeat(65));
+  } else if (!customPublicUrl) {
+    console.log(`[AgentRelay] 💡 跨公网提示: 本机暂未安装 cpolar。如需回家手机流量访问，推荐在电脑运行 cpolar http 3300，或启动时带上 --public-url <你的国内域名>`);
+    console.log('='.repeat(65));
   }
 });
 
@@ -174,25 +157,8 @@ child.stdout.on('data', async (chunk) => {
 
   const prompt = detector.evaluatePrompt();
   if (prompt) {
-    console.log(`\n[AgentRelay] 🔔 检测到交互提问阻断: "${prompt.question}"`);
+    console.log(`\n[AgentRelay] 🔔 检测到交互提问阻断，已同步至手机端: "${prompt.question}"`);
     session.handlePromptDetected(prompt);
-
-    // 触发企业微信群机器人 100% 免费强推送
-    if (wechatWebhook) {
-      console.log(`[AgentRelay] 💬 正在向手机企业微信推送卡片通知...`);
-      const targetUrl = activePublicUrl || lanMobileUrl;
-      wechatNotifier.send({
-        command: targetCmd,
-        question: prompt.question,
-        recent_logs: prompt.recent_logs,
-        taskId,
-        remoteUrl: targetUrl
-      }).then((res) => {
-        if (res.ok) {
-          console.log(`[AgentRelay] ✅ 企业微信通知发送成功！手机已响铃弹窗。`);
-        }
-      });
-    }
   }
 });
 
@@ -211,24 +177,15 @@ process.stdin.on('data', (chunk) => {
 
 // 轮询检查远程手机端下发的决策指令
 const pollInterval = setInterval(async () => {
-  // 1. 检查本地 Web 中转指令
-  const localAction = await session.tick();
-  
-  // 2. 检查云端双向桥接指令
-  let cloudAction = null;
-  if (session.status === 'WAITING_CONFIRMATION') {
-    cloudAction = await cloudBridge.pollAction();
-  }
+  const action = await session.tick();
 
-  const finalAction = localAction || cloudAction;
-
-  if (finalAction === 'KILL') {
+  if (action === 'KILL') {
     console.log('\n[AgentRelay] 🛑 收到手机端紧急制动指令，正在中止任务...');
     child.kill('SIGINT');
     clearInterval(pollInterval);
-  } else if (finalAction) {
-    console.log(`\n[AgentRelay] 📱 收到手机端远程决策指令: "${finalAction}"，已注入执行`);
-    child.stdin.write(`${finalAction}\n`);
+  } else if (action) {
+    console.log(`\n[AgentRelay] 📱 收到手机端远程决策指令: "${action}"，已注入执行`);
+    child.stdin.write(`${action}\n`);
     session.status = 'RUNNING';
   }
 }, 1000);
