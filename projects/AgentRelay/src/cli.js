@@ -25,19 +25,20 @@ AgentRelay - 远程 AI 任务伴侣 (MVP)
   --no-sleep-block     禁用自动防休眠保活
 
 示例:
-  node projects/AgentRelay/src/cli.js run "claude"
-  node projects/AgentRelay/src/cli.js run "claude-code"
+  node projects/AgentRelay/src/cli.js run "claude \"帮我实现某个功能\""
   node projects/AgentRelay/src/cli.js run "antigravity"
+  node projects/AgentRelay/src/cli.js run "node projects/AgentRelay/scratch/mock_agent.js"
 `);
   process.exit(1);
 }
 
-let targetCmd = args[commandIdx + 1];
+let targetCmd = args[commandIdx + 1].trim();
 
-// 智能别名与 Windows 路径解析
+// 1. 智能别名与 Windows 路径解析
 const homeDir = os.homedir();
 const localBinClaude = path.join(homeDir, '.local', 'bin', 'claude.exe');
 
+// 如果输入了 claude-code，自动映射为 claude
 if (targetCmd === 'claude-code' || targetCmd.startsWith('claude-code ')) {
   targetCmd = targetCmd.replace(/^claude-code/, fs.existsSync(localBinClaude) ? `"${localBinClaude}"` : 'claude');
 } else if (targetCmd === 'claude' || targetCmd.startsWith('claude ')) {
@@ -46,15 +47,22 @@ if (targetCmd === 'claude-code' || targetCmd.startsWith('claude-code ')) {
   }
 }
 
+// 2. Claude Code 专用容错：若未传任务提示词，自动补充初始任务，避免因无输入直接退出
+const cleanCmd = targetCmd.replace(/^"|"$/g, '').trim();
+if (cleanCmd.endsWith('claude.exe') || cleanCmd === 'claude') {
+  targetCmd += ' "你好，请列出当前项目状态"';
+  console.log(`[AgentRelay] 💡 提示: 托管 Claude Code 建议带上任务目标，本次已自动配置初始目标: "你好，请列出当前项目状态"`);
+}
+
 const taskId = `task_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
-// 1. 激活系统防休眠保活锁
+// 3. 激活系统防休眠保活锁
 const sleepBlocker = new SleepBlocker();
 if (!args.includes('--no-sleep-block')) {
   sleepBlocker.enable();
 }
 
-// 2. 启动轻量中继服务与手机端 H5 服务
+// 4. 启动轻量中继服务与手机端 H5 服务
 let relayPort = 3300;
 let serverInstance;
 try {
@@ -67,7 +75,7 @@ try {
   serverInstance = s.server;
 }
 
-// 3. 解析局域网 IP 与公网隧道
+// 5. 解析局域网 IP 与公网隧道
 function getNetworkIps() {
   const interfaces = os.networkInterfaces();
   const ips = [];
