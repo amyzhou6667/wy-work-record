@@ -1,4 +1,4 @@
-# 📂 项目库 (Projects Library)
+﻿# 📂 项目库 (Projects Library)
 
 本目录集中管理由【产品工作流】与【开发工作流】孵化和落地的所有具体业务项目。
 
@@ -8,7 +8,7 @@
 
 | 项目名称 | 定位与核心功能 | 状态 | 快速入口 |
 | :--- | :--- | :--- | :--- |
-| **AgentRelay** | 网易内网 AI 任务远程伴侣（微信小程序 + PC CLI 包装器 + 微信云开发 Serverless） | MVP 方案已就绪 / 待开发 | [查看详情](./AgentRelay/README.md) |
+| **AgentRelay** | wy内网 AI 任务远程伴侣（微信小程序 + PC CLI 包装器 + 微信云开发 Serverless） | MVP 方案已就绪 / 待开发 | [查看详情](./AgentRelay/README.md) |
 
 ---
 

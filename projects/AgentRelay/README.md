@@ -1,6 +1,6 @@
-# 🚀 AgentRelay - 远程 AI 任务伴侣
+﻿# 🚀 AgentRelay - 远程 AI 任务伴侣
 
-> 解决在网易内网工位电脑运行 `claude-code`、`antigravity`、`deepseek harness` 等长耗时任务时，下班后在家通过微信小程序随时查看进度、接收卡住提问、一键确认/紧急中止的轻量中继工具。
+> 解决在wy内网工位电脑运行 `claude-code`、`antigravity`、`deepseek harness` 等长耗时任务时，下班后在家通过微信小程序随时查看进度、接收卡住提问、一键确认/紧急中止的轻量中继工具。
 
 ---
 
@@ -26,6 +26,6 @@
 
 ```mermaid
 flowchart LR
-    OfficePC["工位电脑 (网易内网)<br/>relay run claude-code"] <-->|HTTPS/WSS| WeChatCloud["微信云开发<br/>(Serverless DB & Push)"]
+    OfficePC["工位电脑 (wy内网)<br/>relay run claude-code"] <-->|HTTPS/WSS| WeChatCloud["微信云开发<br/>(Serverless DB & Push)"]
     WeChatCloud <-->|微信服务通知 & 交互| Mobile["手机端<br/>(微信小程序)"]
 ```
