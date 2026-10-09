@@ -120,6 +120,21 @@ export function createRelayServer(options = {}) {
         return;
       }
 
+      // API: POST /api/tasks/:id/logs (增量更新日志流)
+      const logsMatch = pathname.match(/^\/api\/tasks\/([^/]+)\/logs$/);
+      if (logsMatch && req.method === 'POST') {
+        const id = logsMatch[1];
+        const task = tasks.get(id);
+        if (task) {
+          if (!task.prompt_data) task.prompt_data = {};
+          task.prompt_data.recent_logs = body.logs || [];
+          task.updated_at = Date.now();
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+        return;
+      }
+
       // API: POST /api/tasks/:id/action (手机端提交确认/中止决策)
       const actionMatch = pathname.match(/^\/api\/tasks\/([^/]+)\/action$/);
       if (actionMatch && req.method === 'POST') {

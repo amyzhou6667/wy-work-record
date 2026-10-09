@@ -20,35 +20,28 @@
 ```mermaid
 flowchart TD
     subgraph LocalPC["工位电脑 (wy 内网)"]
-        TargetAgent["目标 Agent (claude-code / antigravity)"]
-        PTYMgr["PTY 虚拟终端管理器"]
-        Detector["Prompt 阻断与停顿检测器"]
-        SyncClient["云开发同步客户端 (Sync Engine)"]
+        NativeTerminal["codemaker / 终端原生窗口 (Claude Code 执行)"]
+        SessionJSONL[("会话文件: ~/.claude/projects/D--.../*.jsonl")]
+        Watcher["ClaudeWatcher (零延迟增量跟踪器)"]
+        Injector["WindowsKeyInjector (剪贴板 + 窗口按键注入)"]
+        SleepBlocker["SleepBlocker (Win32 防休眠锁)"]
+        LocalServer["本地中继 HTTP 服务 (Node 原生 3300)"]
 
-        TargetAgent <-->|伪终端输入输出流| PTYMgr
-        PTYMgr -->|实时字符流| Detector
-        Detector -->|触发阻断事件| SyncClient
-        SyncClient -->|拉取确认指令| PTYMgr
+        NativeTerminal -->|自动落盘流| SessionJSONL
+        SessionJSONL -->|增量 Tail| Watcher
+        Watcher -->|状态与日志上报| LocalServer
+        LocalServer -->|拉取待消费指令| Injector
+        Injector -.->|剪贴板同步 / 快捷按键| NativeTerminal
     end
 
-    subgraph WeChatCloud["微信云开发 (Serverless)"]
-        TaskCollection[("云数据库: relay_tasks")]
-        CmdCollection[("云数据库: relay_commands")]
-        PushFn["云函数: sendSubscribeMessage (服务通知推送)"]
-
-        SyncClient <-->|HTTPS 轮询/推送| TaskCollection
-        SyncClient <-->|消费指令| CmdCollection
-        TaskCollection --> PushFn
+    subgraph DomesticNet["国内网络隧道层"]
+        Tunnel["cpolar 国内穿透节点 / 国内云主机反代"]
+        LocalServer <-->|HTTP REST / H5 托管| Tunnel
     end
 
-    subgraph MobileDevice["手机移动端"]
-        MiniProgram["微信小程序 (AgentRelay)"]
-        WeChatNotice["微信服务通知"]
-
-        PushFn --> WeChatNotice
-        WeChatNotice --> MiniProgram
-        MiniProgram <-->|读任务/写决策| TaskCollection
-        MiniProgram -->|下发 Action/Kill| CmdCollection
+    subgraph MobileDevice["手机移动端 (4G/5G)"]
+        MobileH5["微信/移动端浏览器 H5 控制卡片"]
+        Tunnel <-->|HTTPS 极速直连| MobileH5
     end
 ```
 
@@ -146,26 +139,33 @@ export interface IPromptDetector {
 ### 3.2 PTY 终端管理器契约 (`ITerminalManager`)
 负责跨平台挂载子进程、双向透传输入输出。
 
+### 3.2 会话监听器契约 (`IClaudeWatcher`)
+负责零侵入监听目标项目的 Claude Code 增量会话文件（JSONL）流。
+
 ```typescript
-export interface ITerminalManager {
-  /**
-   * 启动目标命令并挂载伪终端
-   * @param command 要运行的命令与参数
-   * @param onData 输出数据流回调
-   * @param onExit 进程退出回调
-   */
-  spawn(command: string, onData: (data: string) => void, onExit: (code: number) => void): void;
+export interface IClaudeWatcher {
+  /** 启动观察器并监听增量记录 */
+  start(intervalMs?: number): this;
+  /** 停止观察器 */
+  stop(): void;
+  /** 事件：实时消息产生 */
+  on(event: 'message', listener: (msg: { role: string; text: string; timestamp: string }) => void): this;
+  /** 事件：触发人工裁决/确认关卡 */
+  on(event: 'prompt', listener: (prompt: { question: string; fullText: string; timestamp: string }) => void): this;
+}
+```
 
-  /**
-   * 向伪终端写入用户输入
-   * @param input 用户输入文本 (自动补齐换行符)
-   */
-  write(input: string): void;
+### 3.3 剪贴板与按键注入器契约 (`IKeyInjector`)
+负责将手机端裁决决策无损回传至 Windows 目标窗口。
 
+```typescript
+export interface IKeyInjector {
   /**
-   * 强制向子进程发送中止信号 (Ctrl+C / SIGINT)
+   * 将文本同步写入系统剪贴板并向目标窗口注入
+   * @param text 要发送的内容 (如 "确认")
+   * @param windowTitle 目标窗口标题模糊匹配
    */
-  kill(): void;
+  sendKeys(text: string, windowTitle?: string): Promise<boolean>;
 }
 ```
 

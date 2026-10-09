@@ -1,4 +1,4 @@
-﻿# 【产品需求文档】AgentRelay 远程 AI 任务伴侣 (PRD)
+# 【产品需求文档】AgentRelay 远程 AI 任务伴侣 (PRD)
 
 | 文档版本 | 文档状态 | 编写人 | 创建日期 | 评审状态 |
 | :--- | :--- | :--- | :--- | :--- |
@@ -43,14 +43,16 @@
 ## 3. 需求范围与边界划分 (In-Scope vs Non-Goals)
 
 ### 3.1 本期包含范围 (MVP In-Scope)
-- [x] **PC 端轻量终端包装器 (CLI Wrapper)**：支持通过 `relay run <command>` 启动任意 AI 工具，监听 PTY 输入输出流。
-- [x] **阻断与交互式提问捕获**：自动识别 AI 处于“等待用户输入”状态（如 `?`、`[y/n]`、选择菜单）。
-- [x] **数据合规脱敏中继**：仅上传提问摘要及最近 10 行上下文，严禁上传整个项目源码。
-- [x] **微信云开发 (Serverless) 中转**：利用微信云开发数据库与云函数中转消息，免购公网 VPS、免域名备案。
-- [x] **手机端任务卡片与一键决策**：手机端展示提问卡片，支持一键发送 `Y`、`N`、选项编号或单行文本回复。
-- [x] **远程紧急制动 (Kill Task)**：手机端一键向 PC 下发 `SIGINT / Ctrl+C` 强制刹车，防止死循环。
-- [x] **双向输入共存**：手机端和电脑本地键盘均可响应输入，次日到工位可无缝接管。
-- [x] **心跳监控与离线告警**：PC 端 30 秒上报一次心跳，2 分钟丢失触发离线提示。
+- [x] **双模式接入架构**：
+  - **模式 1 (Watch 伴侣监听模式 - 推荐)**：`relay watch <项目路径>`，零侵入监听正在运行的 Claude Code / codemaker 终端窗口，不改变用户原生交互窗口体验，后台静默守望会话流与人工决策关卡。
+  - **模式 2 (Run 托管运行模式)**：`relay run "<command>"`，托管启动目标命令并接管终端输入输出流。
+- [x] **阻断与交互式提问捕获**：毫秒级捕获 Claude Code 结构化会话文件与阻断提问（如人工审批、`[y/n]`、阶段 B 文档裁决关卡）。
+- [x] **数据合规脱敏中继**：仅上传提问摘要及最近日志上下文，严禁上传整个项目源码。
+- [x] **国内穿透 + 手机 H5 极速访问**：基于国内穿透节点（cpolar 等）或自建云服务器，手机 4G/5G 流量免梯子秒开。
+- [x] **手机端任务卡片与一键决策**：手机端展示提问卡片与实时终端日志，支持一键发送 `Y`、`N` 或自定义中文/参数回复，支持自动聚焦防闪退。
+- [x] **电脑防休眠保活 (SleepBlocker)**：底层 Win32 API 锁定唤醒状态，保障夜间长任务不休眠冻结。
+- [x] **远程决策回传与按键/剪贴板注入**：手机端决策下发后自动同步电脑剪贴板并尝试激活窗口注入，支持两端输入共存。
+- [x] **远程紧急制动 (Kill Task)**：手机端一键向 PC 下发强制刹车，防止死循环。
 
 ### 3.2 明确不做的范围 (Non-Goals - MVP)
 - ❌ **不做全量终端字符流远程渲染 (No full PTY Web-Terminal)**：不把手机当成完整 Shell 终端，避免网络流量浪费及复杂字符渲染问题。
@@ -64,27 +66,30 @@
 ### 4.1 系统整体交互架构
 ```mermaid
 flowchart LR
-    subgraph OfficePC["公司电脑 (wy内网)"]
-        Agent["AI 工具 (claude-code / antigravity)"]
-        CLI["Relay CLI 包装器"]
-        Agent <-->|标准 I/O / PTY| CLI
+    subgraph OfficePC["公司工位电脑 (wy内网)"]
+        direction TB
+        codemaker["codemaker / 终端 原生窗口 (Claude Code 执行中)"]
+        Watch["AgentRelay (Watch 伴侣监听器)"]
+        Sleep["SleepBlocker (Win32 防休眠锁)"]
+        Server["轻量中继 HTTP 服务 (Port: 3300)"]
+        Clip["剪贴板与按键注入 (WindowsKeyInjector)"]
+
+        codemaker -.->|写入增量会话 JSONL| Watch
+        Watch -->|同步最新卡片与日志| Server
+        Server -->|拉取移动端决策| Clip
+        Clip -.->|Ctrl+V/回车注入| codemaker
     end
 
-    subgraph CloudBase["中转层 (微信云开发 Serverless)"]
-        CloudDB[("云数据库 Tasks & Messages")]
-        CloudFn["微信云函数 / 订阅消息推送"]
+    subgraph Tunnel["网络中继层 (国内节点免梯子)"]
+        Cpolar["cpolar 国内穿透 / 国内云服务器"]
     end
 
-    subgraph Mobile["手机移动端"]
-        MP["微信小程序 (AgentRelay)"]
-        Notice["微信服务通知"]
+    subgraph Mobile["手机移动端 (4G/5G 随时随地)"]
+        H5["微信/手机浏览器 H5 响应式控制台"]
     end
 
-    CLI -->|HTTPS/WSS 上报提问摘要与心跳| CloudDB
-    CloudDB --> CloudFn --> Notice
-    Notice --> MP
-    MP -->|写入指令决策 Y/N/Kill| CloudDB
-    CLI -->|轮询/长连消费指令并写回 PTY| CloudDB
+    Server <-->|HTTP/REST| Cpolar
+    Cpolar <-->|公网 HTTPS 直连| H5
 ```
 
 ### 4.2 端到端业务时序图 (Socratic Sequence Flow)

@@ -370,10 +370,24 @@
     function renderTask(task) {
       document.getElementById('taskCommand').innerText = task.command || 'AI 任务';
       const badge = document.getElementById('taskStatusBadge');
-      badge.innerText = formatStatus(task.status);
-      badge.className = `status-pill ${task.status}`;
-
+      if (badge) {
+        badge.innerText = formatStatus(task.status);
+        badge.className = `status-pill ${task.status}`;
+      }
       const content = document.getElementById('dynamicContent');
+
+      // 如果用户正在输入框聚焦打字，绝不重绘 DOM，防止手机键盘失焦闪退
+      const activeInput = document.getElementById('customInput');
+      if (activeInput && document.activeElement === activeInput) {
+        return;
+      }
+
+      // 如果内容没有实质变更，不重建 DOM
+      const stateHash = `${task.status}_${(task.prompt_data && task.prompt_data.question) || ''}_${(task.prompt_data && task.prompt_data.recent_logs && task.prompt_data.recent_logs.length) || 0}`;
+      if (window._lastRenderHash === stateHash) {
+        return;
+      }
+      window._lastRenderHash = stateHash;
 
       if (task.status === 'WAITING_CONFIRMATION' && task.prompt_data) {
         // 振动提示 (手机支持的话)
@@ -409,15 +423,34 @@
           </div>
         `;
       } else if (task.status === 'RUNNING') {
+        const logs = (task.prompt_data && task.prompt_data.recent_logs || []).join('\n');
+        const question = task.prompt_data && task.prompt_data.question;
         content.innerHTML = `
           <div class="running-notice">
             <div class="spinner"></div>
-            <p><strong>AI 正在工位电脑后台自主推进中...</strong></p>
-            <span style="font-size: 12px; color: #8b949e;">遇到阻断提问将立刻自动在此弹窗</span>
+            <p><strong>AI 正在工位电脑自主推进中</strong></p>
+            ${question ? `<div style="font-size: 13px; color: #58a6ff; margin-top: 6px; word-break: break-all;">💡 当前状态: ${escapeHtml(question)}</div>` : ''}
           </div>
-          <button class="btn btn-danger-kill" style="margin-top: 10px;" onclick="confirmKill()">
-            🛑 紧急中止当前任务
-          </button>
+
+          ${logs ? `
+            <div style="margin-top: 14px;">
+              <div style="font-size: 12px; font-weight: 600; color: #8b949e; margin-bottom: 6px;">💻 实时终端日志流:</div>
+              <div class="logs-drawer" style="max-height: 220px; overflow-y: auto;">${escapeHtml(logs)}</div>
+            </div>
+          ` : ''}
+
+          <div style="margin-top: 14px;">
+            <div style="font-size: 12px; font-weight: 600; color: #8b949e; margin-bottom: 6px;">📱 远程下发决策/回复:</div>
+            <div class="custom-input-bar">
+              <input type="text" id="customInput" class="input-box" placeholder="输入 1 / y / 指令回复..." onkeydown="if(event.key==='Enter') sendCustomAction()" />
+              <button class="btn btn-send" onclick="sendCustomAction()">发送</button>
+            </div>
+            <div style="display: flex; gap: 8px; margin-top: 8px;">
+              <button class="btn btn-success" style="padding: 8px; font-size: 13px;" onclick="sendAction('y')">同意 (Y)</button>
+              <button class="btn btn-danger" style="padding: 8px; font-size: 13px;" onclick="sendAction('n')">拒绝 (N)</button>
+              <button class="btn btn-danger-kill" style="padding: 8px; font-size: 13px; margin: 0;" onclick="confirmKill()">中止任务</button>
+            </div>
+          </div>
         `;
       } else if (task.status === 'COMPLETED') {
         content.innerHTML = `

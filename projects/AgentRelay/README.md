@@ -15,34 +15,21 @@
 ---
 
 ## 🏃 快速启动指南
-
-### 1. 运行自动化测试 (0 失败门禁)
-```bash
-node --test projects/AgentRelay/tests/*.test.js
+ 
+-### 1. 伴侣监听模式 (推荐！零侵扰、不改变任何原生窗口)
+如果您已经在 **codemaker** 或终端中运行了 Claude Code（如正在跑 `/auto-dev ...`），直接在旁边开启守望伴侣：
+```powershell
+node projects/AgentRelay/src/cli.js watch "D:\hyper-v\share\proj\opendeck" --public-url http://5ba752e9.r6.cpolar.cn
 ```
+- **电脑端**：继续在原生 codemaker 窗口聊、看全彩高亮日志；
+- **手机端**：浏览器/微信打开终端输出的链接，实时监控终端日志流；
+- **智能确认**：当遇到“阶段 B 人工裁决”时，手机会震动并弹窗，点击 `[同意]` 自动注入“确认”或写入剪贴板继续推进！
 
-### 2. 本地/局域网托管启动（同一 Wi-Fi 直接访问）
-```bash
-node projects/AgentRelay/src/cli.js run "claude \"帮我检查项目代码\""
+### 2. 托管执行模式 (可选)
+如果希望由 AgentRelay 统一托管拉起任务：
+```powershell
+node projects/AgentRelay/src/cli.js run "claude" --cwd "D:\hyper-v\share\proj\opendeck" --public-url http://5ba752e9.r6.cpolar.cn
 ```
-终端会输出局域网访问链接：`http://10.x.x.x:3300/?task=task_xxxx`，同一 Wi-Fi 下手机直接打开！
-
-### 3. 下班回家公网访问（国内节点穿透方案）
-
-#### 方式 A：使用国内 cpolar 穿透（国内备案节点，手机 4G/5G 秒开）
-1. 在工位电脑安装并启动 cpolar（国内免费内网穿透）：
-   ```bash
-   cpolar http 3300
-   ```
-   cpolar 会为您分配一个国内 HTTPS 域名（例如 `https://xxxx.cpolar.top`）；
-2. 启动 AgentRelay 时传入该公网地址：
-   ```bash
-   node projects/AgentRelay/src/cli.js run "claude \"分析项目\"" --public-url https://xxxx.cpolar.top
-   ```
-3. 无论您在地铁上还是在家里，手机流量直接打开该地址即可远程查看与确认！
-
-#### 方式 B：自建国内云服务器反向代理
-若您有阿里云/腾讯云/网易云等国内轻量服务器，将服务器域名通过 `--public-url` 传入即可。
 
 ---
 
