@@ -225,8 +225,14 @@ if (isWatchMode) {
       console.log(`\n[AgentRelay] 📱 收到手机端下发的裁决决策: "${action}"`);
       console.log(`[AgentRelay] 📋 已将回复 "${action}" 同步写入电脑剪贴板并尝试注入窗口！`);
       
-      await WindowsKeyInjector.sendKeys(action, 'Claude Code');
-      console.log(`[AgentRelay] 💡 提示: 若 Claude 窗口未激活，您切回窗口直接按【Ctrl+V】即可粘贴并回车。`);
+      const injectRes = await WindowsKeyInjector.sendKeys(action, 'Claude');
+      if (injectRes && injectRes.success) {
+        console.log(`[AgentRelay] 🎯 成功激活终端窗口: "${injectRes.windowTitle}"`);
+        console.log(`[AgentRelay] ⚡ 已通过硬件键盘仿真注入按键与回车，任务继续推进！`);
+      } else {
+        console.log(`[AgentRelay] ⚠️ 未能自动定位 Claude 终端窗口 (${injectRes?.error || '未找到窗口'})，已保底写入剪贴板。`);
+        console.log(`[AgentRelay] 💡 提示: 您切回 Claude 终端窗口直接按【Ctrl+V】即可粘贴并回车。`);
+      }
 
       await syncClient.ackCommand(cmd._id);
     }

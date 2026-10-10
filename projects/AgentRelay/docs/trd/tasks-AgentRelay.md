@@ -2,7 +2,7 @@
 
 | 责任人 | 关联 PRD | 关联 TRD | 当前状态 |
 | :--- | :--- | :--- | :--- |
-| 研发团队 | [PRD 链接](../prd/PRD-AgentRelay-远程AI任务伴侣.md) | [TRD 链接](./TRD-AgentRelay-技术架构方案.md) | 核心通过 (Passed 12/12) |
+| 研发团队 | [PRD 链接](../prd/PRD-AgentRelay-远程AI任务伴侣.md) | [TRD 链接](./TRD-AgentRelay-技术架构方案.md) | 核心通过 (Passed 14/14) |
 
 ---
 
@@ -51,16 +51,18 @@
 - [x] **Task 5.2: 公网安全穿透与隧道管理器 (TunnelManager)**
   - **测试文件**：`projects/AgentRelay/tests/tunnel.test.js`
   - **实现文件**：`projects/AgentRelay/src/platform/tunnel.js`
-  - **特性**：优先读取本地已运行的 cpolar 服务并兼容国内 HTTP/HTTPS，支持 `--public-url` 自定义域名。
+  - **特性**：优先读取本地已运行的 cpolar 动态日志并兼容国内 HTTP/HTTPS，支持 `--public-url` 自定义域名，动态域名变更实时热更新。
   - **验收命令**：`node --test projects/AgentRelay/tests/tunnel.test.js` (通过)。
 
 ### 阶段六：零侵入伴侣监听与按键/剪贴板无损回传 (Watch Mode)
 - [x] **Task 6.1: 结构化会话文件观察器 (ClaudeWatcher)**
   - **实现文件**：`projects/AgentRelay/src/watcher/claude_watcher.js`
   - **机制**：映射 Windows 盘符（`D--...`），毫秒级 Tail 增量会话 JSONL，精准捕获“阶段 B 文档确认（唯一人工关卡）”等阻断提问。
-- [x] **Task 6.2: 剪贴板与按键注入器 (WindowsKeyInjector)**
-  - **实现文件**：`projects/AgentRelay/src/platform/injector.js`
-  - **机制**：手机端点击 `[同意]` 智能映射为“确认”，自动写入 Windows 剪贴板并向活动终端发送 Ctrl+V 与回车。
+- [x] **Task 6.2: Win32 原生窗口激活与键盘驱动仿真注入器 (WindowsKeyInjector)**
+  - **测试文件**：`projects/AgentRelay/tests/injector.test.js`
+  - **实现文件**：`projects/AgentRelay/src/platform/injector.js` / `projects/AgentRelay/src/platform/win_inject.ps1`
+  - **机制**：基于 `OpenDesktop("Default")` + `AttachThreadInput` 穿透 Windows 焦点防劫持保护，模糊匹配 `✳ Claude Code` / Windows Terminal 窗口并激活至最前台，使用 `keybd_event` 底层键盘事件模拟粘贴与回车。
+  - **验收命令**：`node --test projects/AgentRelay/tests/injector.test.js` (通过)。
 - [x] **Task 6.3: 手机端输入法防失焦闪退机制**
   - **实现文件**：`projects/AgentRelay/src/web/index.html`
   - **机制**：检测 `document.activeElement`，输入打字时锁定 DOM 重绘，消除每 1.5s 轮询导致的手机键盘弹回闪退。
