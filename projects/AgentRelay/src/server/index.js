@@ -66,7 +66,7 @@ export function createRelayServer(options = {}) {
           last_heartbeat: Date.now()
         };
         tasks.set(taskId, task);
-        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify(task));
         return;
       }
@@ -85,12 +85,12 @@ export function createRelayServer(options = {}) {
         }
 
         if (!task) {
-          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
           res.end(JSON.stringify({ error: 'Task not found' }));
           return;
         }
 
-        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify(task));
         return;
       }
@@ -101,7 +101,7 @@ export function createRelayServer(options = {}) {
         const id = promptMatch[1];
         const task = tasks.get(id);
         if (!task) {
-          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
           res.end(JSON.stringify({ error: 'Task not found' }));
           return;
         }
@@ -115,7 +115,7 @@ export function createRelayServer(options = {}) {
         };
         task.updated_at = Date.now();
 
-        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify(task));
         return;
       }
@@ -130,7 +130,7 @@ export function createRelayServer(options = {}) {
           task.prompt_data.recent_logs = body.logs || [];
           task.updated_at = Date.now();
         }
-        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ok: true }));
         return;
       }
@@ -141,7 +141,7 @@ export function createRelayServer(options = {}) {
         const id = actionMatch[1];
         const task = tasks.get(id);
         if (!task) {
-          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
           res.end(JSON.stringify({ error: 'Task not found' }));
           return;
         }
@@ -168,7 +168,7 @@ export function createRelayServer(options = {}) {
         }
         task.updated_at = Date.now();
 
-        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ok: true, command_id: cmd._id }));
         return;
       }
@@ -180,7 +180,7 @@ export function createRelayServer(options = {}) {
         const queue = pendingCommands.get(id) || [];
         const nextCmd = queue.shift() || null;
 
-        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ command: nextCmd }));
         return;
       }
