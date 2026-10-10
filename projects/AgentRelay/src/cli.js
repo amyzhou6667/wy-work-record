@@ -204,8 +204,14 @@ if (isWatchMode) {
   watcher.on('prompt', async (prompt) => {
     console.log(`\n[AgentRelay] 🔔 触发人工裁决关卡，手机端已震动弹窗！`);
     console.log(`             提问: "${prompt.question}"`);
+    if (prompt.options && prompt.options.length > 0) {
+      prompt.options.forEach(o => {
+        console.log(`             [${o.index}] ${o.label}`);
+      });
+    }
     await syncClient.reportPrompt(taskId, {
       question: prompt.question,
+      suggested_options: prompt.options || [],
       recent_logs: prompt.fullText.split('\n').slice(-20)
     });
   });

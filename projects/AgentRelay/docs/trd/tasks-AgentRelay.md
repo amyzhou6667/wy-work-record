@@ -2,7 +2,7 @@
 
 | 责任人 | 关联 PRD | 关联 TRD | 当前状态 |
 | :--- | :--- | :--- | :--- |
-| 研发团队 | [PRD 链接](../prd/PRD-AgentRelay-远程AI任务伴侣.md) | [TRD 链接](./TRD-AgentRelay-技术架构方案.md) | 核心通过 (Passed 14/14) |
+| 研发团队 | [PRD 链接](../prd/PRD-AgentRelay-远程AI任务伴侣.md) | [TRD 链接](./TRD-AgentRelay-技术架构方案.md) | 核心通过 (Passed 15/15) |
 
 ---
 
@@ -66,3 +66,8 @@
 - [x] **Task 6.3: 手机端输入法防失焦闪退机制**
   - **实现文件**：`projects/AgentRelay/src/web/index.html`
   - **机制**：检测 `document.activeElement`，输入打字时锁定 DOM 重绘，消除每 1.5s 轮询导致的手机键盘弹回闪退。
+- [x] **Task 6.4: AskUserQuestion 结构化单选/多选题卡片识别与点选下发**
+  - **测试文件**：`projects/AgentRelay/tests/claude_watcher.test.js`
+  - **实现文件**：`projects/AgentRelay/src/watcher/claude_watcher.js` / `projects/AgentRelay/src/web/index.html`
+  - **机制**：从 Claude 会话 JSONL 解析 `AskUserQuestion` 工具入参中的 `questions` 与 `options`，手机端自适应渲染为点选卡片，点击即可直传选项序号（1/2/3）推进任务。
+  - **验收命令**：`node --test projects/AgentRelay/tests/claude_watcher.test.js` (通过)。

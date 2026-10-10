@@ -238,6 +238,68 @@
       padding: 10px;
     }
 
+    /* 多选题 / 单选题选项卡片样式 */
+    .options-container {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    .option-btn {
+      appearance: none;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 10px;
+      padding: 12px 14px;
+      text-align: left;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      width: 100%;
+    }
+
+    .option-btn:active {
+      transform: scale(0.98);
+      background: #21262d;
+      border-color: var(--primary);
+    }
+
+    .option-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .option-badge {
+      background: rgba(56, 139, 253, 0.2);
+      color: #58a6ff;
+      font-weight: 700;
+      font-size: 13px;
+      width: 24px;
+      height: 24px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .option-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .option-desc {
+      font-size: 12px;
+      color: #8b949e;
+      line-height: 1.4;
+      padding-left: 34px;
+    }
+
     /* 自定义回复输入框 */
     .custom-input-bar {
       display: flex;
@@ -383,7 +445,7 @@
       }
 
       // 如果内容没有实质变更，不重建 DOM
-      const stateHash = `${task.status}_${(task.prompt_data && task.prompt_data.question) || ''}_${(task.prompt_data && task.prompt_data.recent_logs && task.prompt_data.recent_logs.length) || 0}`;
+      const stateHash = `${task.status}_${(task.prompt_data && task.prompt_data.question) || ''}_${(task.prompt_data && task.prompt_data.suggested_options && task.prompt_data.suggested_options.length) || 0}_${(task.prompt_data && task.prompt_data.recent_logs && task.prompt_data.recent_logs.length) || 0}`;
       if (window._lastRenderHash === stateHash) {
         return;
       }
@@ -394,6 +456,44 @@
         if (navigator.vibrate) navigator.vibrate(200);
 
         const logs = (task.prompt_data.recent_logs || []).join('\n');
+        const options = task.prompt_data.suggested_options || [];
+
+        let actionAreaHtml = '';
+        if (options.length > 0) {
+          actionAreaHtml = `
+            <div class="options-container">
+              ${options.map(opt => `
+                <button class="option-btn" onclick="sendAction('${opt.index}')">
+                  <div class="option-header">
+                    <span class="option-badge">${opt.index}</span>
+                    <span class="option-title">${escapeHtml(opt.label)}</span>
+                  </div>
+                  ${opt.description ? `<div class="option-desc">${escapeHtml(opt.description)}</div>` : ''}
+                </button>
+              `).join('')}
+            </div>
+            <div style="margin-top: 10px;">
+              <button class="btn btn-danger-kill" style="width: 100%; padding: 12px;" onclick="confirmKill()">
+                🛑 紧急中止当前任务
+              </button>
+            </div>
+          `;
+        } else {
+          actionAreaHtml = `
+            <div class="actions-grid">
+              <button class="btn btn-success" onclick="sendAction('y')">
+                ✅ 同意 (Y)
+              </button>
+              <button class="btn btn-danger" onclick="sendAction('n')">
+                ❌ 拒绝 (N)
+              </button>
+              <button class="btn btn-danger-kill" onclick="confirmKill()">
+                🛑 紧急中止当前任务
+              </button>
+            </div>
+          `;
+        }
+
         content.innerHTML = `
           <div class="prompt-box">
             <div class="prompt-title">
@@ -405,20 +505,10 @@
             ${logs ? `<div class="logs-drawer">${escapeHtml(logs)}</div>` : ''}
           </div>
 
-          <div class="actions-grid">
-            <button class="btn btn-success" onclick="sendAction('y')">
-              ✅ 同意 (Y)
-            </button>
-            <button class="btn btn-danger" onclick="sendAction('n')">
-              ❌ 拒绝 (N)
-            </button>
-            <button class="btn btn-danger-kill" onclick="confirmKill()">
-              🛑 紧急中止当前任务
-            </button>
-          </div>
+          ${actionAreaHtml}
 
           <div class="custom-input-bar">
-            <input type="text" id="customInput" class="input-box" placeholder="输入序号(如 1)或回复..." onkeydown="if(event.key==='Enter') sendCustomAction()" />
+            <input type="text" id="customInput" class="input-box" placeholder="输入序号(如 1)或自定义内容..." onkeydown="if(event.key==='Enter') sendCustomAction()" />
             <button class="btn btn-send" onclick="sendCustomAction()">发送</button>
           </div>
         `;

@@ -55,7 +55,7 @@ export class ClaudeWatcher extends EventEmitter {
     }
 
     try {
-      const files = fs.readdirSync(this.sessionDir)
+      const allFiles = fs.readdirSync(this.sessionDir)
         .filter(f => f.endsWith('.jsonl'))
         .map(f => {
           const fullPath = path.join(this.sessionDir, f);
@@ -64,15 +64,57 @@ export class ClaudeWatcher extends EventEmitter {
         })
         .sort((a, b) => b.mtime - a.mtime);
 
-      if (files.length > 0) {
-        if (this.currentFile !== files[0].fullPath) {
-          this.currentFile = files[0].fullPath;
-          // 新文件定位：若首次加载，回溯读取最后 64KB 记录，确保当前未决提问立刻被发现
-          this.lastOffset = Math.max(0, files[0].size - 65536);
-          this.readTail();
+      if (allFiles.length === 0) return null;
+
+      // 从 mtime 最新的前 5 个候选文件中，通过读取尾部真实记录时间戳选出真正最新活跃会话
+      let bestFile = allFiles[0].fullPath;
+      let latestRecordTime = 0;
+
+      const candidates = allFiles.slice(0, 5);
+      for (const cand of candidates) {
+        const lastTs = this.peekLastRecordTimestamp(cand.fullPath, cand.size);
+        if (lastTs > latestRecordTime) {
+          latestRecordTime = lastTs;
+          bestFile = cand.fullPath;
         }
       }
+
+      if (this.currentFile !== bestFile) {
+        this.currentFile = bestFile;
+        const stat = fs.statSync(bestFile);
+        // 新文件定位：若首次加载，回溯读取最后 128KB 记录，确保当前未决提问立刻被发现
+        this.lastOffset = Math.max(0, stat.size - 131072);
+        this.readTail();
+      }
     } catch (e) {}
+  }
+
+  /**
+   * 探测指定会话文件尾部的最新记录时间戳
+   */
+  peekLastRecordTimestamp(filePath, fileSize) {
+    try {
+      const readLen = Math.min(fileSize, 8192);
+      if (readLen <= 0) return 0;
+      const buf = Buffer.alloc(readLen);
+      const fd = fs.openSync(filePath, 'r');
+      fs.readSync(fd, buf, 0, readLen, fileSize - readLen);
+      fs.closeSync(fd);
+
+      const lines = buf.toString('utf8').trim().split('\n');
+      for (let i = lines.length - 1; i >= 0; i--) {
+        const line = lines[i].trim();
+        if (!line || !line.startsWith('{')) continue;
+        try {
+          const obj = JSON.parse(line);
+          if (obj.timestamp) {
+            const t = new Date(obj.timestamp).getTime();
+            if (!isNaN(t)) return t;
+          }
+        } catch {}
+      }
+    } catch {}
+    return 0;
   }
 
   /**
@@ -135,8 +177,41 @@ export class ClaudeWatcher extends EventEmitter {
    * 解析单条 Claude 记录
    */
   handleRecord(record) {
-    let textContent = '';
+    // 1. 优先检测是否为 AskUserQuestion / ask_question 结构化工具调用
+    let toolPrompt = null;
+    if (record.type === 'assistant' && record.message && Array.isArray(record.message.content)) {
+      for (const item of record.message.content) {
+        if (item.type === 'tool_use' && (item.name === 'AskUserQuestion' || item.name === 'ask_question')) {
+          toolPrompt = this.parseAskUserQuestion(item.input);
+          if (toolPrompt) break;
+        }
+      }
+    }
+    if (!toolPrompt && record.wireToolInputs) {
+      for (const toolId of Object.keys(record.wireToolInputs)) {
+        toolPrompt = this.parseAskUserQuestion(record.wireToolInputs[toolId]);
+        if (toolPrompt) break;
+      }
+    }
 
+    if (toolPrompt) {
+      this.lastMessage = {
+        role: 'assistant',
+        text: toolPrompt.fullText,
+        timestamp: record.timestamp || new Date().toISOString()
+      };
+      this.emit('message', this.lastMessage);
+      this.emit('prompt', {
+        question: toolPrompt.question,
+        options: toolPrompt.options,
+        fullText: toolPrompt.fullText,
+        timestamp: this.lastMessage.timestamp
+      });
+      return;
+    }
+
+    // 2. 文本记录解析
+    let textContent = '';
     if (record.type === 'assistant' && record.message) {
       const msg = record.message;
       if (Array.isArray(msg.content)) {
@@ -163,6 +238,7 @@ export class ClaudeWatcher extends EventEmitter {
       if (this.isAwaitingUserDecision(textContent)) {
         this.emit('prompt', {
           question: this.extractQuestionSummary(textContent),
+          options: [],
           fullText: textContent,
           timestamp: this.lastMessage.timestamp
         });
@@ -170,6 +246,34 @@ export class ClaudeWatcher extends EventEmitter {
     } else if (record.type === 'user' && record.message) {
       this.emit('user_reply', record.message);
     }
+  }
+
+  /**
+   * 解析 AskUserQuestion 工具参数
+   */
+  parseAskUserQuestion(input) {
+    if (!input || !Array.isArray(input.questions) || input.questions.length === 0) {
+      return null;
+    }
+    const q = input.questions[0];
+    const header = q.header ? `[${q.header}] ` : '';
+    const question = `${header}${q.question || '请选择下一步操作'}`;
+    const options = (q.options || []).map((opt, i) => ({
+      index: i + 1,
+      label: typeof opt === 'string' ? opt : (opt.label || `选项 ${i + 1}`),
+      description: typeof opt === 'object' ? (opt.description || '') : ''
+    }));
+
+    const optionsText = options
+      .map(o => `${o.index}. ${o.label}${o.description ? `\n   ${o.description}` : ''}`)
+      .join('\n');
+    const fullText = `${question}\n\n${optionsText}`;
+
+    return {
+      question,
+      options,
+      fullText
+    };
   }
 
   /**
