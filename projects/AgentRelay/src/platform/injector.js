@@ -15,20 +15,23 @@ export class WindowsKeyInjector {
       // 转义双引号
       const safeText = text.replace(/"/g, '""');
       
-      // PowerShell 将指令写入系统剪贴板，并向当前活动窗口发送粘贴与回车
+      // PowerShell 将指令写入系统剪贴板，激活终端窗口并发送回车
       const psScript = `
         Add-Type -AssemblyName System.Windows.Forms
         [System.Windows.Forms.Clipboard]::SetText("${safeText}")
         $wshell = New-Object -ComObject WScript.Shell
-        # 尝试激活包含 Claude 或 WindowsTerminal 的窗口
-        $activated = $wshell.AppActivate("Claude Code")
-        if (-not $activated) {
-          $activated = $wshell.AppActivate("Claude")
+        
+        # 依次尝试匹配 Windows Terminal / PowerShell / Claude 窗口
+        $targets = @("管理员: Windows PowerShell", "Windows PowerShell", "Claude Code", "Claude", "wt", "CodeMaker")
+        $activated = $false
+        foreach ($t in $targets) {
+          if ($wshell.AppActivate($t)) {
+            $activated = $true
+            break
+          }
         }
-        if (-not $activated) {
-          $activated = $wshell.AppActivate("wt")
-        }
-        Start-Sleep -Milliseconds 150
+        
+        Start-Sleep -Milliseconds 200
         $wshell.SendKeys("^v")
         Start-Sleep -Milliseconds 100
         $wshell.SendKeys("{ENTER}")

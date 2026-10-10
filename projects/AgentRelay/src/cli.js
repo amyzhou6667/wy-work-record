@@ -158,14 +158,29 @@ if (isWatchMode) {
   }
   console.log(`[AgentRelay] 📱 局域网访问入口: 👉 ${lanMobileUrl}`);
 
-  tunnelManager.getPublicUrl(relayPort).then((pubUrl) => {
-    if (pubUrl) {
+  let currentActivePubUrl = null;
+  const printPublicUrl = (pubUrl) => {
+    if (pubUrl && pubUrl !== currentActivePubUrl) {
+      currentActivePubUrl = pubUrl;
       const remoteUrl = `${pubUrl}/?task=${taskId}`;
       console.log(`[AgentRelay] 🌐 国内穿透访问入口 (手机 4G/5G 直连秒开):`);
       console.log(`             👉 \x1b[32m\x1b[1m${remoteUrl}\x1b[0m`);
       console.log('='.repeat(65));
     }
-  });
+  };
+
+  tunnelManager.getPublicUrl(relayPort).then(printPublicUrl);
+
+  // 定时每 30 秒感知 cpolar 是否因夜间网络波动重新分配了新域名
+  setInterval(async () => {
+    try {
+      const dynamicUrl = await tunnelManager.detectRunningCpolarTunnel(relayPort);
+      if (dynamicUrl && dynamicUrl !== currentActivePubUrl) {
+        console.log(`\n[AgentRelay] 🔄 检测到 cpolar 穿透域名已自动更新:`);
+        printPublicUrl(dynamicUrl);
+      }
+    } catch (e) {}
+  }, 30000);
 
   const watcher = new ClaudeWatcher(targetCwd);
   const syncClient = new CloudSyncClient({ mode: 'http', baseUrl: `http://127.0.0.1:${relayPort}` });

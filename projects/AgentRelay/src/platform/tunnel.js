@@ -87,9 +87,10 @@ export class TunnelManager {
   }
 
   /**
-   * 探测已经在运行的 cpolar 服务的本地 API (4040 或 9200)
+   * 探测已经在运行的 cpolar 服务的本地 API 或服务日志
    */
   async detectRunningCpolarTunnel(port) {
+    // 1. 尝试本地开放 API
     const apiEndpoints = [
       'http://127.0.0.1:4040/api/tunnels',
       'http://localhost:4040/api/tunnels'
@@ -101,7 +102,6 @@ export class TunnelManager {
         if (res.ok) {
           const data = await res.json();
           if (data && data.tunnels && data.tunnels.length > 0) {
-            // 找到指向本地对应端口的隧道，或者第一个有效公网隧道
             const matched = data.tunnels.find(t => 
               t.config && t.config.addr && t.config.addr.includes(String(port))
             ) || data.tunnels[0];
@@ -113,6 +113,38 @@ export class TunnelManager {
         }
       } catch (e) {}
     }
+
+    // 2. 从本地 ~/.cpolar/logs 最新日志中提取动态域名 (兼容免费版 cpolar 每天重连刷新的新域名)
+    try {
+      const logsDir = path.join(os.homedir(), '.cpolar', 'logs');
+      if (fs.existsSync(logsDir)) {
+        const logFiles = fs.readdirSync(logsDir)
+          .filter(f => f.startsWith('cpolar_service.log') && !f.includes('master'))
+          .map(f => {
+            const fullPath = path.join(logsDir, f);
+            const stat = fs.statSync(fullPath);
+            return { fullPath, mtime: stat.mtimeMs, size: stat.size };
+          })
+          .sort((a, b) => b.mtime - a.mtime);
+
+        if (logFiles.length > 0) {
+          const latestLog = logFiles[0].fullPath;
+          const readSize = Math.min(logFiles[0].size, 131072); // 读取最后 128KB
+          const buffer = Buffer.alloc(readSize);
+          const fd = fs.openSync(latestLog, 'r');
+          fs.readSync(fd, buffer, 0, readSize, logFiles[0].size - readSize);
+          fs.closeSync(fd);
+
+          const content = buffer.toString('utf8');
+          // 倒序匹配最近的一条 http://xxxx.r*.cpolar.cn
+          const matches = [...content.matchAll(/http:\/\/[a-zA-Z0-9-.]+\.(?:cpolar\.cn|cpolar\.top|cpolar\.io)/g)];
+          if (matches.length > 0) {
+            return matches[matches.length - 1][0];
+          }
+        }
+      }
+    } catch (e) {}
+
     return null;
   }
 
