@@ -50,10 +50,10 @@ public class Win32KeyInjector {
     public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
     [DllImport("user32.dll")]
-    public static extern bool SetForegroundWindow(IntPtr hWnd);
+    public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);
 
     [DllImport("user32.dll")]
-    public static extern void SwitchToThisWindow(IntPtr hWnd, bool fAltTab);
+    public static extern bool SetForegroundWindow(IntPtr hWnd);
 
     [DllImport("user32.dll")]
     public static extern IntPtr GetForegroundWindow();
@@ -174,16 +174,15 @@ public class Win32KeyInjector {
 
             // 3. Activate and bring target window to foreground
             if (IsIconic(targetHwnd)) {
-                ShowWindow(targetHwnd, SW_RESTORE);
+                ShowWindowAsync(targetHwnd, SW_RESTORE);
             } else {
-                ShowWindow(targetHwnd, SW_SHOW);
+                ShowWindowAsync(targetHwnd, SW_SHOW);
             }
 
             BringWindowToTop(targetHwnd);
             SetForegroundWindow(targetHwnd);
             SetActiveWindow(targetHwnd);
             SetFocus(targetHwnd);
-            SwitchToThisWindow(targetHwnd, true);
 
             // Wait for window message pump to process activation
             Thread.Sleep(250);
