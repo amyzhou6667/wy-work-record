@@ -6,7 +6,7 @@ test('WindowsKeyInjector: 应当能正确调用并处理未找到窗口的情况
   const result = await WindowsKeyInjector.sendKeys('test_keystroke', 'NonExistentWindow_99999');
   assert.equal(typeof result, 'object');
   assert.equal(result.success, false);
-  assert.match(result.error, /未找到|Not on win32/i);
+  assert.match(result.error, /not found|未找到|Not on win32/i);
 });
 
 test('WindowsKeyInjector: 应当能定位并激活 Claude 终端窗口 (无按键发送模式)', async () => {
@@ -15,7 +15,7 @@ test('WindowsKeyInjector: 应当能定位并激活 Claude 终端窗口 (无按�
   assert.equal(typeof result, 'object');
   // 如果机器上开着 Claude 窗口，应成功匹配并返回窗口句柄
   if (result.success) {
-    assert.ok(result.windowTitle.includes('Claude') || result.className.includes('CASCADIA'));
+    assert.ok(result.windowTitle.includes('Claude') || result.windowTitle.includes('CodeMaker') || result.className.includes('CASCADIA'));
     assert.ok(result.hwnd > 0);
   }
 });

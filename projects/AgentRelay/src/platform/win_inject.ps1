@@ -4,11 +4,12 @@ param(
     [switch]$NoSendKeys
 )
 
+# 1. Set system clipboard
 if ($Text -ne "") {
     Set-Clipboard -Value $Text
 }
 
-# 2. C# Win32 原生激活与按键注入
+# 2. C# Win32 window activator and keystroke injector
 Add-Type @'
 using System;
 using System.Text;
@@ -67,7 +68,16 @@ public class Win32KeyInjector {
     public static extern bool BringWindowToTop(IntPtr hWnd);
 
     [DllImport("user32.dll")]
+    public static extern IntPtr SetFocus(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    public static extern IntPtr SetActiveWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
     public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+
+    [DllImport("user32.dll")]
+    public static extern uint MapVirtualKey(uint uCode, uint uMapType);
 
     const int SW_RESTORE = 9;
     const int SW_SHOW = 5;
@@ -97,7 +107,7 @@ public class Win32KeyInjector {
             string targetTitle = "";
             string targetClass = "";
 
-            // 1. 优先通过标题包含 targetHint (如 "Claude") 模糊查找
+            // 1. Primary fuzzy match by title (e.g. "Claude")
             EnumDesktopWindows(hDesk, (hWnd, lParam) => {
                 if (!IsWindowVisible(hWnd)) return true;
 
@@ -118,7 +128,7 @@ public class Win32KeyInjector {
                 return true;
             }, IntPtr.Zero);
 
-            // 2. 次级后备查找：仅当目标为 Claude 或通用终端时，后备匹配 Windows Terminal / CodeMaker / PowerShell
+            // 2. Secondary fallback: Look for Windows Terminal (CASCADIA_HOSTING_WINDOW_CLASS)
             if (targetHwnd == IntPtr.Zero && (string.IsNullOrEmpty(targetHint) || targetHint.IndexOf("Claude", StringComparison.OrdinalIgnoreCase) >= 0)) {
                 EnumDesktopWindows(hDesk, (hWnd, lParam) => {
                     if (!IsWindowVisible(hWnd)) return true;
@@ -126,15 +136,11 @@ public class Win32KeyInjector {
                     GetClassName(hWnd, sbClass, 512);
                     string cls = sbClass.ToString();
 
-                    StringBuilder sbTitle = new StringBuilder(512);
-                    GetWindowText(hWnd, sbTitle, 512);
-                    string title = sbTitle.ToString();
-
-                    if (cls == "CASCADIA_HOSTING_WINDOW_CLASS" || 
-                        title.IndexOf("CodeMaker", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                        title.IndexOf("PowerShell", StringComparison.OrdinalIgnoreCase) >= 0) {
+                    if (cls == "CASCADIA_HOSTING_WINDOW_CLASS" || cls == "ConsoleWindowClass") {
                         targetHwnd = hWnd;
-                        targetTitle = title;
+                        StringBuilder sbTitle = new StringBuilder(512);
+                        GetWindowText(hWnd, sbTitle, 512);
+                        targetTitle = sbTitle.ToString();
                         targetClass = cls;
                         return false;
                     }
@@ -144,7 +150,7 @@ public class Win32KeyInjector {
 
             if (targetHwnd == IntPtr.Zero) {
                 res.Success = false;
-                res.Error = "未找到匹配的目标窗口: " + targetHint;
+                res.Error = "Target window not found: " + targetHint;
                 return;
             }
 
@@ -158,10 +164,15 @@ public class Win32KeyInjector {
             uint fgThread = fgHwnd != IntPtr.Zero ? GetWindowThreadProcessId(fgHwnd, out dummyPid) : 0;
             uint targetThread = GetWindowThreadProcessId(targetHwnd, out dummyPid);
 
-            // 桥接当前线程与前台、目标窗口的输入队列，绕过 Windows 前台焦点防劫持保护
+            // 1. Bridge input queues between current thread, foreground, and target
             if (fgThread != 0 && fgThread != curThread) AttachThreadInput(curThread, fgThread, true);
             if (targetThread != 0 && targetThread != curThread) AttachThreadInput(curThread, targetThread, true);
 
+            // 2. Simulate Alt keystroke to unlock Windows LockSetForegroundWindow
+            keybd_event(0x12, 0x38, 0, UIntPtr.Zero); // ALT down
+            keybd_event(0x12, 0x38, KEYEVENTF_KEYUP, UIntPtr.Zero); // ALT up
+
+            // 3. Activate and bring target window to foreground
             if (IsIconic(targetHwnd)) {
                 ShowWindow(targetHwnd, SW_RESTORE);
             } else {
@@ -170,36 +181,49 @@ public class Win32KeyInjector {
 
             BringWindowToTop(targetHwnd);
             SetForegroundWindow(targetHwnd);
+            SetActiveWindow(targetHwnd);
+            SetFocus(targetHwnd);
             SwitchToThisWindow(targetHwnd, true);
 
-            if (fgThread != 0 && fgThread != curThread) AttachThreadInput(curThread, fgThread, false);
-            if (targetThread != 0 && targetThread != curThread) AttachThreadInput(curThread, targetThread, false);
+            // Wait for window message pump to process activation
+            Thread.Sleep(250);
 
+            // 4. Send keystrokes with scan codes while KEEPING AttachThreadInput active
             if (sendKeystrokes) {
+                // Clear any lingering modifier states
+                keybd_event(0x11, 0x1D, KEYEVENTF_KEYUP, UIntPtr.Zero); // Ctrl up
+                keybd_event(0x12, 0x38, KEYEVENTF_KEYUP, UIntPtr.Zero); // Alt up
+                keybd_event(0x10, 0x2A, KEYEVENTF_KEYUP, UIntPtr.Zero); // Shift up
+                Thread.Sleep(60);
+
+                byte scanCtrl = (byte)MapVirtualKey(0x11, 0); // 0x1D
+                byte scanV = (byte)MapVirtualKey(0x56, 0);    // 0x2F
+                byte scanEnter = (byte)MapVirtualKey(0x0D, 0);// 0x1C
+
+                // Press and hold Ctrl
+                keybd_event(0x11, scanCtrl, 0, UIntPtr.Zero);
+                Thread.Sleep(100);
+
+                // Press and release V
+                keybd_event(0x56, scanV, 0, UIntPtr.Zero);
+                Thread.Sleep(80);
+                keybd_event(0x56, scanV, KEYEVENTF_KEYUP, UIntPtr.Zero);
+                Thread.Sleep(80);
+
+                // Release Ctrl
+                keybd_event(0x11, scanCtrl, KEYEVENTF_KEYUP, UIntPtr.Zero);
                 Thread.Sleep(200);
 
-                // 释放可能残留的控制键修饰状态
-                keybd_event(0x11, 0, KEYEVENTF_KEYUP, UIntPtr.Zero); // Ctrl
-                keybd_event(0x12, 0, KEYEVENTF_KEYUP, UIntPtr.Zero); // Alt
-                keybd_event(0x10, 0, KEYEVENTF_KEYUP, UIntPtr.Zero); // Shift
-                Thread.Sleep(50);
-
-                // 发送 Ctrl+V 粘贴剪贴板内容
-                keybd_event(0x11, 0, 0, UIntPtr.Zero); // Ctrl down
-                Thread.Sleep(30);
-                keybd_event(0x56, 0, 0, UIntPtr.Zero); // V down
-                Thread.Sleep(50);
-                keybd_event(0x56, 0, KEYEVENTF_KEYUP, UIntPtr.Zero); // V up
-                Thread.Sleep(30);
-                keybd_event(0x11, 0, KEYEVENTF_KEYUP, UIntPtr.Zero); // Ctrl up
-
-                Thread.Sleep(150);
-
-                // 发送 回车 (Enter) 确认
-                keybd_event(0x0D, 0, 0, UIntPtr.Zero); // Enter down
-                Thread.Sleep(50);
-                keybd_event(0x0D, 0, KEYEVENTF_KEYUP, UIntPtr.Zero); // Enter up
+                // Press and release Enter
+                keybd_event(0x0D, scanEnter, 0, UIntPtr.Zero);
+                Thread.Sleep(80);
+                keybd_event(0x0D, scanEnter, KEYEVENTF_KEYUP, UIntPtr.Zero);
+                Thread.Sleep(100);
             }
+
+            // 5. Detach input queues after keystrokes are completed
+            if (fgThread != 0 && fgThread != curThread) AttachThreadInput(curThread, fgThread, false);
+            if (targetThread != 0 && targetThread != curThread) AttachThreadInput(curThread, targetThread, false);
 
             res.Success = true;
         });
