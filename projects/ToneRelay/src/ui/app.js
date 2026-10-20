@@ -45,10 +45,7 @@
   const progressInfo = document.getElementById('progressInfo');
   const finishBatchBtn = document.getElementById('finishBatchBtn');
 
-  // 事件绑定：安全触发选图
-  refCard.addEventListener('click', () => refInput.click());
-  targetCard.addEventListener('click', () => targetInput.click());
-
+  // 原生透明 Input 覆盖层直接捕获点击，无需 JS 代理模拟点击，杜绝移动端系统崩溃
   refInput.addEventListener('change', (e) => handleFileSelect(e, 'ref'));
   targetInput.addEventListener('change', (e) => handleFileSelect(e, 'target'));
 

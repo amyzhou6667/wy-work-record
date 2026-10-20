@@ -16,22 +16,22 @@
       <p class="subtitle">解构灵感色调 · 批量无损应用</p>
     </header>
 
-    <!-- 1. 双槽选图区 -->
+    <!-- 1. 双槽选图区 (使用原生透明覆盖层，杜绝 JS click 代理引发的移动端崩溃) -->
     <section class="slot-section">
       <div class="slot-card" id="refCard">
+        <input type="file" id="refInput" class="file-input-overlay" accept="image/*">
         <div class="slot-badge">灵感参考图</div>
         <div class="slot-preview" id="refPreview">
           <span class="upload-tip">+ 选择参考图</span>
         </div>
-        <input type="file" id="refInput" accept="image/jpeg,image/png,image/webp,image/*" hidden>
       </div>
 
       <div class="slot-card" id="targetCard">
+        <input type="file" id="targetInput" class="file-input-overlay" accept="image/*" multiple>
         <div class="slot-badge">待修原图 (1~9张)</div>
         <div class="slot-preview" id="targetPreview">
           <span class="upload-tip">+ 选择待修照片</span>
         </div>
-        <input type="file" id="targetInput" accept="image/jpeg,image/png,image/webp,image/*" multiple hidden>
       </div>
     </section>
 
