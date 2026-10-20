@@ -25,7 +25,6 @@
 
   const previewSection = document.getElementById('previewSection');
   const splitViewport = document.getElementById('splitViewport');
-  const splitOverlay = document.getElementById('splitOverlay');
   const splitDivider = document.getElementById('splitDivider');
   const canvasBefore = document.getElementById('canvasBefore');
   const canvasAfter = document.getElementById('canvasAfter');
@@ -264,6 +263,24 @@
       span.textContent = `🏷️ ${tag}`;
       tagsGroup.appendChild(span);
     });
+
+    // 明确展示具体解构出的 P 图参数
+    const tempText = recipe.temperature > 0 ? `色温 +${recipe.temperature}K (暖)` : (recipe.temperature < 0 ? `色温 ${recipe.temperature}K (冷)` : '色温 中性');
+    const params = [
+      tempText,
+      `高光色相 ${recipe.highlights.hue}°`,
+      `阴影色相 ${recipe.shadows.hue}°`,
+      `对比度 ×${recipe.contrast}`
+    ];
+    params.forEach(p => {
+      const span = document.createElement('span');
+      span.className = 'recipe-tag';
+      span.style.background = 'rgba(59, 130, 246, 0.15)';
+      span.style.borderColor = 'rgba(59, 130, 246, 0.3)';
+      span.style.color = '#93c5fd';
+      span.textContent = `📊 ${p}`;
+      tagsGroup.appendChild(span);
+    });
   }
 
   function renderGradingCanvas() {
@@ -295,13 +312,13 @@
     renderGradingCanvas();
   });
 
-  // 卷帘滑动交互
+  // 卷帘滑动交互 (硬件级 clip-path 对比，两图 1:1 绝对重合无拉伸)
   function updateSplitPosition(clientX) {
     const rect = splitViewport.getBoundingClientRect();
     let x = clientX - rect.left;
     x = Math.max(0, Math.min(rect.width, x));
-    const percent = (x / rect.width) * 100;
-    splitOverlay.style.width = `${percent}%`;
+    const percent = ((x / rect.width) * 100).toFixed(1);
+    canvasBefore.style.clipPath = `polygon(0 0, ${percent}% 0, ${percent}% 100%, 0 100%)`;
     splitDivider.style.left = `${percent}%`;
   }
 

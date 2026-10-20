@@ -1,5 +1,5 @@
 /**
- * ToneRelay - 调色渲染与质感合成引擎
+ * ToneRelay - 调色渲染与质感合成引擎 (专业影调增强版)
  */
 const { normalizeGradingOptions } = require('../types');
 const { MockImageData } = require('../../tests/helpers/image_mock');
@@ -17,7 +17,7 @@ function hueToRgbOffset(hue) {
 }
 
 /**
- * 执行调色渲染
+ * 执行专业影调渲染
  * @param {ImageData} targetImageData 
  * @param {import('../types').StyleRecipe} recipe 
  * @param {import('../types').GradingOptions} options 
@@ -38,7 +38,8 @@ function renderGrading(targetImageData, recipe, options, skinMask) {
   }
 
   const {
-    contrast = 1.0,
+    contrast = 1.15,
+    saturation = 1.1,
     temperature = 0,
     tint = 0,
     highlights,
@@ -49,13 +50,13 @@ function renderGrading(targetImageData, recipe, options, skinMask) {
 
   const hiOffset = highlights ? hueToRgbOffset(highlights.hue) : [0, 0, 0];
   const shOffset = shadows ? hueToRgbOffset(shadows.hue) : [0, 0, 0];
-  const hiWeight = highlights ? highlights.saturation * highlights.weight * 40 : 0;
-  const shWeight = shadows ? shadows.saturation * shadows.weight * 40 : 0;
+  // 增强着色能量系数 (由 40 提升至 110，让色彩氛围鲜明可辨)
+  const hiWeight = highlights ? Math.max(0.2, highlights.saturation) * (highlights.weight || 0.6) * 110 : 0;
+  const shWeight = shadows ? Math.max(0.2, shadows.saturation) * (shadows.weight || 0.6) * 110 : 0;
 
   const cx = width / 2;
   const cy = height / 2;
   const maxDist = Math.hypot(cx, cy);
-
   const totalPixels = width * height;
 
   for (let p = 0; p < totalPixels; p++) {
@@ -69,33 +70,44 @@ function renderGrading(targetImageData, recipe, options, skinMask) {
     let g = origG;
     let b = origB;
 
-    // 1. 色温与色调 (White Balance)
-    r += temperature * 0.4;
-    b -= temperature * 0.4;
-    g += tint * 0.3;
+    // 1. 白平衡与色温偏移 (White Balance: 增强灵敏度)
+    r += temperature * 1.0;
+    b -= temperature * 1.0;
+    g += tint * 0.8;
 
-    // 2. 对比度 (Contrast)
+    // 2. 对比度与 S 曲线 (Contrast)
     r = (r - 128) * contrast + 128;
     g = (g - 128) * contrast + 128;
     b = (b - 128) * contrast + 128;
 
-    // 3. 高光与暗部色调分离 (Split Toning)
+    // 3. 饱和度增强 (Saturation Vibrance)
+    if (saturation !== 1.0) {
+      const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+      r = gray + (r - gray) * saturation;
+      g = gray + (g - gray) * saturation;
+      b = gray + (b - gray) * saturation;
+    }
+
+    // 4. 高光与暗部色调分离注入 (Split Toning: 全色阶平滑羽化)
     const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-    if (lum > 128) {
-      const w = (lum - 128) / 127;
+    // 高光区间着色 (亮度 > 110 逐步增强)
+    if (lum > 110) {
+      const w = Math.min(1.0, (lum - 110) / 120);
       r += hiOffset[0] * hiWeight * w;
       g += hiOffset[1] * hiWeight * w;
       b += hiOffset[2] * hiWeight * w;
-    } else {
-      const w = (128 - lum) / 128;
+    }
+    // 阴影区间着色 (亮度 < 150 逐步增强)
+    if (lum < 150) {
+      const w = Math.min(1.0, (150 - lum) / 120);
       r += shOffset[0] * shWeight * w;
       g += shOffset[1] * shWeight * w;
       b += shOffset[2] * shWeight * w;
     }
 
-    // 4. 胶片颗粒与暗角
+    // 5. 胶片颗粒与暗角质感
     if (filmGrain > 0) {
-      const noise = (Math.sin(p * 997) * 43758.5453 % 1) * filmGrain * 20;
+      const noise = ((Math.sin(p * 997.13) * 43758.5453) % 1) * filmGrain * 28;
       r += noise;
       g += noise;
       b += noise;
@@ -104,22 +116,30 @@ function renderGrading(targetImageData, recipe, options, skinMask) {
       const px = p % width;
       const py = Math.floor(p / width);
       const dist = Math.hypot(px - cx, py - cy) / maxDist;
-      const vigFactor = 1.0 - Math.pow(dist, 2) * vignette * 0.5;
+      const vigFactor = 1.0 - Math.pow(dist, 1.8) * vignette * 0.6;
       r *= vigFactor;
       g *= vigFactor;
       b *= vigFactor;
     }
 
-    // 5. 智能肤色保护软蒙版融合
-    if (protectSkin && skinMask && skinMask[p] > 0) {
-      const skinW = skinMask[p] * 0.85; // 保护强度
-      // 保持原肤色色相，仅叠加 15% 调色对比
-      r = r * (1 - skinW) + origR * skinW;
-      g = g * (1 - skinW) + origG * skinW;
-      b = b * (1 - skinW) + origB * skinW;
+    // 6. 智能人像肤色保护 (保护色相红润通透，同时融入高光暗影氛围)
+    if (protectSkin && skinMask && skinMask[p] > 0.1) {
+      const skinW = skinMask[p];
+      // 保持原始肤色的 R/G/B 色彩比例，限制异色偏移
+      const origLum = 0.299 * origR + 0.587 * origG + 0.114 * origB;
+      const curLum = Math.max(1, 0.299 * r + 0.587 * g + 0.114 * b);
+      const lumRatio = curLum / (origLum || 1);
+      // 仅保留原肤色的自然色彩倾向并适度受光影影响
+      const skinSafeR = Math.min(255, origR * lumRatio);
+      const skinSafeG = Math.min(255, origG * lumRatio);
+      const skinSafeB = Math.min(255, origB * lumRatio);
+
+      r = r * (1 - skinW * 0.75) + skinSafeR * (skinW * 0.75);
+      g = g * (1 - skinW * 0.75) + skinSafeG * (skinW * 0.75);
+      b = b * (1 - skinW * 0.75) + skinSafeB * (skinW * 0.75);
     }
 
-    // 6. 全局强度插值混合 (Intensity Lerp)
+    // 7. 全局强度插值混合 (Intensity Lerp)
     const finalR = origR * (1 - intensity) + r * intensity;
     const finalG = origG * (1 - intensity) + g * intensity;
     const finalB = origB * (1 - intensity) + b * intensity;

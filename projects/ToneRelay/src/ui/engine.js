@@ -1,5 +1,5 @@
 /**
- * ToneRelay - 纯前端浏览器端算法引擎 (Browser Bundle)
+ * ToneRelay - 纯前端浏览器端算法引擎 (Browser Bundle - 专业增强版)
  * 零依赖、纯客户端 Canvas / 像素矩阵运算，保障相册隐私
  */
 
@@ -70,28 +70,24 @@ window.ToneRelayEngine = (function () {
     }
 
     const meanL = sumL / sampleCount;
-    const meanR = sumR / sampleCount;
-    const meanG = sumG / sampleCount;
-    const meanB = sumB / sampleCount;
-
     let varianceL = 0, varianceRGB = 0;
     for (let i = 0; i < data.length; i += 4 * step) {
       const r = data[i], g = data[i + 1], b = data[i + 2];
       const l = 0.299 * r + 0.587 * g + 0.114 * b;
       varianceL += (l - meanL) ** 2;
-      varianceRGB += ((r - meanR) ** 2 + (g - meanG) ** 2 + (b - meanB) ** 2) / 3;
+      varianceRGB += ((r - meanL) ** 2 + (g - meanL) ** 2 + (b - meanL) ** 2) / 3;
     }
 
     const stdL = Math.sqrt(varianceL / sampleCount);
     const stdRGB = Math.sqrt(varianceRGB / sampleCount);
 
-    if (stdL < 12 && stdRGB < 12) {
+    if (stdL < 10 && stdRGB < 10) {
       return { valid: false, reason: '这张参考图色彩过于单一啦，换一张光影更丰富的照片试试吧~' };
     }
     return { valid: true };
   }
 
-  // 5. 特征解构与配方提取
+  // 5. 特征解构与配方提取 (增强灵敏度与区分度)
   function extractRecipe(imageData) {
     const { width, height, data } = imageData;
     const totalPixels = width * height;
@@ -115,32 +111,34 @@ window.ToneRelayEngine = (function () {
         colorSamples.push([r, g, b, l]);
       }
 
-      if (l > 140 && s > 0.05) {
+      // 高光区 (L > 130)
+      if (l > 130 && s > 0.04) {
         highlightHues.push(h);
         highlightWeights.push(s * (l / 255));
         sumHighlightSat += s;
       }
-      if (l < 110 && s > 0.05) {
+      // 阴影区 (L < 120)
+      if (l < 120 && s > 0.04) {
         shadowHues.push(h);
         shadowWeights.push(s * (1 - l / 255));
         sumShadowSat += s;
       }
     }
 
-    const avgHighlightHue = highlightHues.length > 0 ? averageHue(highlightHues, highlightWeights) : 35;
+    const avgHighlightHue = highlightHues.length > 0 ? averageHue(highlightHues, highlightWeights) : 38;
     const avgShadowHue = shadowHues.length > 0 ? averageHue(shadowHues, shadowWeights) : 210;
-    const avgHighlightSat = highlightHues.length > 0 ? +(sumHighlightSat / highlightHues.length).toFixed(2) : 0.3;
-    const avgShadowSat = shadowHues.length > 0 ? +(sumShadowSat / shadowHues.length).toFixed(2) : 0.3;
+    const avgHighlightSat = highlightHues.length > 0 ? +(sumHighlightSat / highlightHues.length).toFixed(2) : 0.45;
+    const avgShadowSat = shadowHues.length > 0 ? +(sumShadowSat / shadowHues.length).toFixed(2) : 0.45;
 
     const meanL = totalL / sampleCount;
     const exposureOffset = +((meanL - 128) / 255).toFixed(2);
     const tempRatio = totalR / (totalB || 1);
-    const temperature = Math.round((tempRatio - 1.0) * 50);
+    const temperature = Math.round((tempRatio - 1.0) * 35);
 
     colorSamples.sort((a, b) => b[3] - a[3]);
-    const hiColor = colorSamples[0] || [230, 200, 170];
-    const midColor = colorSamples[Math.floor(colorSamples.length / 2)] || [150, 150, 150];
-    const loColor = colorSamples[colorSamples.length - 1] || [40, 50, 60];
+    const hiColor = colorSamples[0] || [240, 190, 140];
+    const midColor = colorSamples[Math.floor(colorSamples.length / 2)] || [140, 150, 160];
+    const loColor = colorSamples[colorSamples.length - 1] || [30, 45, 60];
 
     const dominantPalette = [
       rgbToHex(hiColor[0], hiColor[1], hiColor[2]),
@@ -149,28 +147,28 @@ window.ToneRelayEngine = (function () {
     ];
 
     const tags = [];
-    if (avgHighlightHue >= 20 && avgHighlightHue <= 70) tags.push('暖阳高光');
-    else if (avgHighlightHue >= 180 && avgHighlightHue <= 240) tags.push('冰蓝高光');
-    else tags.push('通透高光');
+    if (avgHighlightHue >= 15 && avgHighlightHue <= 75) tags.push('暖阳金调高光');
+    else if (avgHighlightHue >= 170 && avgHighlightHue <= 245) tags.push('清冷冰蓝高光');
+    else tags.push('纯净透亮高光');
 
-    if (avgShadowHue >= 170 && avgShadowHue <= 250) tags.push('青冷暗部');
-    else if (avgShadowHue >= 10 && avgShadowHue <= 45) tags.push('复古棕调');
-    else tags.push('深沉暗部');
+    if (avgShadowHue >= 165 && avgShadowHue <= 255) tags.push('复古青蓝暗部');
+    else if (avgShadowHue >= 10 && avgShadowHue <= 50) tags.push('温暖棕调暗部');
+    else tags.push('胶片沉稳暗部');
 
-    tags.push('中度胶片质感');
+    tags.push('质感颗粒');
 
     return {
       id: (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : `recipe_${Date.now()}`,
       createdAt: Date.now(),
       exposureOffset,
-      contrast: 1.15,
-      saturation: 1.05,
+      contrast: 1.2,
+      saturation: 1.15,
       temperature,
-      tint: 0,
-      highlights: { hue: avgHighlightHue, saturation: avgHighlightSat, weight: 0.65 },
-      shadows: { hue: avgShadowHue, saturation: avgShadowSat, weight: 0.65 },
-      filmGrain: 0.12,
-      vignette: 0.12,
+      tint: 5,
+      highlights: { hue: avgHighlightHue, saturation: avgHighlightSat, weight: 0.75 },
+      shadows: { hue: avgShadowHue, saturation: avgShadowSat, weight: 0.75 },
+      filmGrain: 0.16,
+      vignette: 0.18,
       tags,
       dominantPalette
     };
@@ -186,9 +184,9 @@ window.ToneRelayEngine = (function () {
     for (let i = 0; i < totalPixels; i++) {
       const idx = i * 4;
       const r = data[idx], g = data[idx + 1], b = data[idx + 2];
-      if (r > g && g > b && (r - g) > 15 && r > 60) {
+      if (r > g && g > b && (r - g) > 12 && r > 50) {
         const [h, s, v] = rgbToHsv(r, g, b);
-        const isSkinHue = (h >= 0 && h <= 48) || (h >= 345 && h <= 360);
+        const isSkinHue = (h >= 0 && h <= 50) || (h >= 340 && h <= 360);
         const isSkinSat = s >= 0.15 && s <= 0.75;
         const isSkinVal = v >= 0.20 && v <= 0.98;
         if (isSkinHue && isSkinSat && isSkinVal) {
@@ -209,7 +207,7 @@ window.ToneRelayEngine = (function () {
     return [Math.cos(rad), Math.cos(rad - (2 * Math.PI) / 3), Math.cos(rad - (4 * Math.PI) / 3)];
   }
 
-  // 8. 调色渲染引擎
+  // 8. 专业影调增强渲染引擎
   function renderGrading(ctx, targetImageData, recipe, options, skinMask) {
     const { intensity = 1.0, protectSkin = true } = options || {};
     const { width, height, data: src } = targetImageData;
@@ -222,14 +220,21 @@ window.ToneRelayEngine = (function () {
     }
 
     const {
-      contrast = 1.0, temperature = 0, tint = 0,
-      highlights, shadows, filmGrain = 0, vignette = 0
+      contrast = 1.15,
+      saturation = 1.15,
+      temperature = 0,
+      tint = 0,
+      highlights,
+      shadows,
+      filmGrain = 0,
+      vignette = 0
     } = recipe;
 
     const hiOffset = highlights ? hueToRgbOffset(highlights.hue) : [0, 0, 0];
     const shOffset = shadows ? hueToRgbOffset(shadows.hue) : [0, 0, 0];
-    const hiWeight = highlights ? highlights.saturation * highlights.weight * 40 : 0;
-    const shWeight = shadows ? shadows.saturation * shadows.weight * 40 : 0;
+    // 增强着色能量系数，保证氛围感鲜明突出
+    const hiWeight = highlights ? Math.max(0.2, highlights.saturation) * (highlights.weight || 0.6) * 110 : 0;
+    const shWeight = shadows ? Math.max(0.2, shadows.saturation) * (shadows.weight || 0.6) * 110 : 0;
 
     const cx = width / 2, cy = height / 2;
     const maxDist = Math.hypot(cx, cy);
@@ -240,51 +245,67 @@ window.ToneRelayEngine = (function () {
       const origR = src[idx], origG = src[idx + 1], origB = src[idx + 2], origA = src[idx + 3];
       let r = origR, g = origG, b = origB;
 
-      // 白平衡
-      r += temperature * 0.4;
-      b -= temperature * 0.4;
-      g += tint * 0.3;
+      // 1. 白平衡与色温
+      r += temperature * 1.0;
+      b -= temperature * 1.0;
+      g += tint * 0.8;
 
-      // 对比度
+      // 2. 对比度与立体感
       r = (r - 128) * contrast + 128;
       g = (g - 128) * contrast + 128;
       b = (b - 128) * contrast + 128;
 
-      // 高光与阴影色调分离
+      // 3. 饱和度
+      if (saturation !== 1.0) {
+        const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+        r = gray + (r - gray) * saturation;
+        g = gray + (g - gray) * saturation;
+        b = gray + (b - gray) * saturation;
+      }
+
+      // 4. 高光与阴影色调分离注入 (Split Toning)
       const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-      if (lum > 128) {
-        const w = (lum - 128) / 127;
+      if (lum > 110) {
+        const w = Math.min(1.0, (lum - 110) / 120);
         r += hiOffset[0] * hiWeight * w;
         g += hiOffset[1] * hiWeight * w;
         b += hiOffset[2] * hiWeight * w;
-      } else {
-        const w = (128 - lum) / 128;
+      }
+      if (lum < 150) {
+        const w = Math.min(1.0, (150 - lum) / 120);
         r += shOffset[0] * shWeight * w;
         g += shOffset[1] * shWeight * w;
         b += shOffset[2] * shWeight * w;
       }
 
-      // 颗粒与暗角
+      // 5. 胶片颗粒与暗角质感
       if (filmGrain > 0) {
-        const noise = (Math.sin(p * 997) * 43758.5453 % 1) * filmGrain * 20;
+        const noise = ((Math.sin(p * 997.13) * 43758.5453) % 1) * filmGrain * 28;
         r += noise; g += noise; b += noise;
       }
       if (vignette > 0) {
         const px = p % width, py = Math.floor(p / width);
         const dist = Math.hypot(px - cx, py - cy) / maxDist;
-        const vigFactor = 1.0 - Math.pow(dist, 2) * vignette * 0.5;
+        const vigFactor = 1.0 - Math.pow(dist, 1.8) * vignette * 0.6;
         r *= vigFactor; g *= vigFactor; b *= vigFactor;
       }
 
-      // 肤色保护
-      if (protectSkin && skinMask && skinMask[p] > 0) {
-        const skinW = skinMask[p] * 0.85;
-        r = r * (1 - skinW) + origR * skinW;
-        g = g * (1 - skinW) + origG * skinW;
-        b = b * (1 - skinW) + origB * skinW;
+      // 6. 智能人像肤色保护
+      if (protectSkin && skinMask && skinMask[p] > 0.1) {
+        const skinW = skinMask[p];
+        const origLum = 0.299 * origR + 0.587 * origG + 0.114 * origB;
+        const curLum = Math.max(1, 0.299 * r + 0.587 * g + 0.114 * b);
+        const lumRatio = curLum / (origLum || 1);
+        const skinSafeR = Math.min(255, origR * lumRatio);
+        const skinSafeG = Math.min(255, origG * lumRatio);
+        const skinSafeB = Math.min(255, origB * lumRatio);
+
+        r = r * (1 - skinW * 0.75) + skinSafeR * (skinW * 0.75);
+        g = g * (1 - skinW * 0.75) + skinSafeG * (skinW * 0.75);
+        b = b * (1 - skinW * 0.75) + skinSafeB * (skinW * 0.75);
       }
 
-      // 全局强度插值
+      // 7. 全局强度插值
       const finalR = origR * (1 - intensity) + r * intensity;
       const finalG = origG * (1 - intensity) + g * intensity;
       const finalB = origB * (1 - intensity) + b * intensity;

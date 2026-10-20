@@ -45,18 +45,16 @@
     <!-- 2. 状态提示 -->
     <div class="toast-bar" id="toastBar">请分别上传【灵感参考图】与【待修原图】</div>
 
-    <!-- 3. 打样卷帘对比工作台 -->
+    <!-- 3. 打样卷帘对比工作台 (1:1 像素级硬件 clip-path 对比，杜绝挤压变形) -->
     <section class="preview-section" id="previewSection" style="display: none;">
       <div class="split-viewport" id="splitViewport">
-        <canvas id="canvasAfter"></canvas>
-        <div class="split-overlay" id="splitOverlay">
-          <canvas id="canvasBefore"></canvas>
-        </div>
+        <canvas id="canvasAfter" class="split-canvas"></canvas>
+        <canvas id="canvasBefore" class="split-canvas"></canvas>
         <div class="split-divider" id="splitDivider">
           <div class="divider-handle"></div>
         </div>
-        <div class="split-label before-label">Original</div>
-        <div class="split-label after-label">Styled</div>
+        <div class="split-label before-label">原片 (Before)</div>
+        <div class="split-label after-label">调色后 (Styled)</div>
       </div>
 
       <!-- 风格配方卡片 -->
