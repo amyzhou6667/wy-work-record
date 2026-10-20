@@ -252,6 +252,17 @@ sequenceDiagram
 - **串行保证**：`BatchPipeline` 使用 `Promise` 队列，强制 `Concurrency = 1`。
 - **即时销毁**：每张大图处理完毕后，主动重置 Canvas 宽高 (`canvas.width = 0; canvas.height = 0`)，解除对原始 ImageData 引用，触发 JavaScript 引擎 V8 的 Scavenge 回收。
 
+#### 4. 植被色彩空间黄绿联动与灰绿深度压制 (Vegetation & Gray-Green Sculpting)
+针对摄影后期中“参考图带高级莫兰迪/胶片灰绿，但修后偏黄刺眼”的痛点：
+1. **黄绿双通道解构拓展**：
+   - 自然界植物多落在黄色至青绿区间 ($H \in [38^\circ, 175^\circ]$)；
+   - 放宽采样门槛至 $S \ge 0.05$，捕获低饱和灰阶像素；
+   - 采用色域中心高斯加权与中位数统计，消除噪点对饱和度的虚高拉抬。
+2. **深度自适应阻尼压缩与管线防打架**：
+   - 建立高斯植被平滑权重 $W_{plant}$，色相平滑牵引至目标青绿/橄榄绿；
+   - 施加非线性阻尼压缩：$S_{out} = S_{in} \cdot (1 - W_{plant} \cdot 0.85) + \min(S_{in}, S_{target} \cdot 1.15) \cdot (W_{plant} \cdot 0.85)$；
+   - 在后序全局饱和度增强时加入植被防护屏蔽：$S_{eff} = 1.0 + (S_{global} - 1.0) \cdot (1 - W_{plant} \cdot 0.92)$，彻底锁定灰绿沉淀。
+
 ---
 
 ## 5. 异常处理与容灾降级 (Fault Tolerance)

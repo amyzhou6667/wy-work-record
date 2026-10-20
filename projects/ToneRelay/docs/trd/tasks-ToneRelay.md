@@ -67,3 +67,16 @@
     - `projects/ToneRelay/src/ui/styles.css`
     - `projects/ToneRelay/src/ui/app.js`
   - **验收标准**：双槽选图、卷帘拖动对比、强度滑块、九宫格批量进度交互完整可用。
+
+### 阶段五：植被色彩空间黄绿联动与灰绿深度压制专项调优
+- [x] **Task 5.1: 灰绿与黄绿植被色彩空间 TDD 单元测试集**
+  - **改动范围**：`projects/ToneRelay/tests/green_tuning.test.js`
+  - **目标**：验证低饱和莫兰迪灰绿捕获、黄绿嫩叶植被联动、原图高饱和刺眼绿深度压制。
+  - **验证命令**：`node --test projects/ToneRelay/tests/green_tuning.test.js`
+- [x] **Task 5.2: 提取器扩展植被色彩域与无偏饱和度统计**
+  - **改动范围**：`projects/ToneRelay/src/core/extractor.js`
+  - **目标**：放宽灰绿采样下限 ($s \ge 0.05$)，扩充植被色相域至 $38^\circ \sim 175^\circ$，改用中位数和高斯权值消除虚高饱和度。
+- [x] **Task 5.3: 渲染引擎深度自适应压制与全局饱和度保护**
+  - **改动范围**：`projects/ToneRelay/src/core/renderer.js`、`projects/ToneRelay/src/ui/engine.js`
+  - **目标**：建立植被平滑引导矩阵，施加灰绿深度阻尼压缩，并在全局饱和度提升环节引入植被防打架保护。
+
