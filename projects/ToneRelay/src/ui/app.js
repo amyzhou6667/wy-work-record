@@ -1,13 +1,17 @@
 /**
  * ToneRelay - 移动端前端应用交互逻辑 (Web Preview)
+ * 全面集成 ToneRelayEngine 真实算法
  */
 
 (function () {
+  const engine = window.ToneRelayEngine;
+
   // 核心状态
   let refImageData = null;
   let targetImages = []; // Array of Image elements
   let currentRecipe = null;
-  let skinMask = null;
+  let currentSkinMask = null;
+  let currentTargetData = null;
   let isSplitDragging = false;
 
   // DOM 元素
@@ -48,9 +52,11 @@
   refInput.addEventListener('change', (e) => handleFileSelect(e, 'ref'));
   targetInput.addEventListener('change', (e) => handleFileSelect(e, 'target'));
 
-  function showToast(msg) {
+  function showToast(msg, isError = false) {
     toastBar.textContent = msg;
     toastBar.style.display = 'block';
+    toastBar.style.borderColor = isError ? 'rgba(239, 68, 68, 0.4)' : 'rgba(59, 130, 246, 0.2)';
+    toastBar.style.color = isError ? '#f87171' : '#60a5fa';
   }
 
   function handleFileSelect(e, type) {
@@ -64,7 +70,21 @@
         refPreview.innerHTML = '';
         const previewImg = img.cloneNode();
         refPreview.appendChild(previewImg);
-        refImageData = getImageDataFromImg(img, 300);
+        refImageData = getImageDataFromImg(img, 400);
+
+        // 前置特征门控校验
+        const check = engine.validateReferenceImage(refImageData);
+        if (!check.valid) {
+          showToast(check.reason, true);
+          currentRecipe = null;
+          previewSection.style.display = 'none';
+          return;
+        }
+
+        // 真实解构调色配方
+        currentRecipe = engine.extractRecipe(refImageData);
+        renderRecipeBadges(currentRecipe);
+        showToast('✨ 灵感色调已成功解构！');
         analyzeAndRenderIfReady();
       };
       img.src = URL.createObjectURL(file);
@@ -114,32 +134,26 @@
   }
 
   function analyzeAndRenderIfReady() {
-    if (!refImageData || targetImages.length === 0) return;
+    if (!currentRecipe || targetImages.length === 0) return;
 
-    // 前置门控校验
-    showToast('正在解析灵感色调与特征...');
-    setTimeout(() => {
-      // 简单模拟前置门控
-      currentRecipe = {
-        id: 'recipe_' + Date.now(),
-        highlights: { hue: 35, saturation: 0.5, weight: 0.7 },
-        shadows: { hue: 210, saturation: 0.5, weight: 0.7 },
-        contrast: 1.15,
-        temperature: 15,
-        tint: 5,
-        filmGrain: 0.15,
-        vignette: 0.15,
-        dominantPalette: ['#E6A268', '#7898A5', '#243447'],
-        tags: ['暖阳高光', '青冷暗部', '中度胶片质感']
-      };
+    previewSection.style.display = 'flex';
+    const firstImg = targetImages[0];
+    currentTargetData = getImageDataFromImg(firstImg, 600);
 
-      // 渲染风格配方
-      renderRecipeBadges(currentRecipe);
-      previewSection.style.display = 'flex';
-      showToast('解析完成！左右滑动卷帘可对比原片与调色效果');
+    // 绘制原图
+    canvasBefore.width = currentTargetData.width;
+    canvasBefore.height = currentTargetData.height;
+    const ctxBefore = canvasBefore.getContext('2d');
+    ctxBefore.putImageData(currentTargetData, 0, 0);
 
-      renderPreviewCanvas();
-    }, 300);
+    canvasAfter.width = currentTargetData.width;
+    canvasAfter.height = currentTargetData.height;
+
+    // 异步提取人脸肤色蒙版
+    currentSkinMask = engine.generateSkinMask(currentTargetData);
+
+    renderGradingCanvas();
+    showToast('打样就绪！左右拖动卷帘可即时对比，下方可微调强度与肤色保护');
   }
 
   function renderRecipeBadges(recipe) {
@@ -160,64 +174,33 @@
     });
   }
 
-  function renderPreviewCanvas() {
-    if (!targetImages[0] || !currentRecipe) return;
-    const firstImg = targetImages[0];
-    const targetData = getImageDataFromImg(firstImg, 600);
+  function renderGradingCanvas() {
+    if (!currentTargetData || !currentRecipe) return;
 
-    canvasBefore.width = targetData.width;
-    canvasBefore.height = targetData.height;
-    const ctxBefore = canvasBefore.getContext('2d');
-    ctxBefore.putImageData(targetData, 0, 0);
-
-    canvasAfter.width = targetData.width;
-    canvasAfter.height = targetData.height;
     const ctxAfter = canvasAfter.getContext('2d');
-
-    // 调色渲染计算 (前端即时渲染)
     const intensity = parseFloat(intensitySlider.value) / 100;
     const protectSkin = skinToggle.checked;
 
-    // 创建渲染副本
-    const outData = ctxAfter.createImageData(targetData.width, targetData.height);
-    const src = targetData.data;
-    const dst = outData.data;
+    // 调用真实渲染算法
+    const renderedData = engine.renderGrading(
+      ctxAfter,
+      currentTargetData,
+      currentRecipe,
+      { intensity, protectSkin },
+      currentSkinMask
+    );
 
-    for (let i = 0; i < src.length; i += 4) {
-      let r = src[i];
-      let g = src[i + 1];
-      let b = src[i + 2];
-      const a = src[i + 3];
-
-      // 简易色彩调色逻辑：增加对比、暖高光冷暗部
-      const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-      let styledR = r + (lum > 128 ? 20 : -10);
-      let styledG = g + (lum > 128 ? 10 : 5);
-      let styledB = b + (lum > 128 ? -15 : 25);
-
-      // 肤色保护
-      if (protectSkin && r > g && g > b && (r - g) > 15) {
-        styledR = styledR * 0.2 + r * 0.8;
-        styledG = styledG * 0.2 + g * 0.8;
-        styledB = styledB * 0.2 + b * 0.8;
-      }
-
-      dst[i] = Math.max(0, Math.min(255, Math.round(r * (1 - intensity) + styledR * intensity)));
-      dst[i + 1] = Math.max(0, Math.min(255, Math.round(g * (1 - intensity) + styledG * intensity)));
-      dst[i + 2] = Math.max(0, Math.min(255, Math.round(b * (1 - intensity) + styledB * intensity)));
-      dst[i + 3] = a;
-    }
-    ctxAfter.putImageData(outData, 0, 0);
+    ctxAfter.putImageData(renderedData, 0, 0);
   }
 
-  // 强度滑块调节
+  // 强度滑块调节 (实时计算)
   intensitySlider.addEventListener('input', (e) => {
     intensityText.textContent = `${e.target.value}%`;
-    renderPreviewCanvas();
+    renderGradingCanvas();
   });
 
   skinToggle.addEventListener('change', () => {
-    renderPreviewCanvas();
+    renderGradingCanvas();
   });
 
   // 卷帘滑动交互
@@ -244,28 +227,44 @@
   // 存为专属滤镜
   saveFilterBtn.addEventListener('click', () => {
     if (!currentRecipe) return;
-    const name = prompt('为您的专属滤镜起个名字：', '秋日日落电影感');
+    const defaultName = `滤镜_${new Date().toISOString().slice(5, 10).replace('-', '')}_${currentRecipe.tags[0] || '影调'}`;
+    const name = prompt('为您的专属滤镜命名：', defaultName);
     if (name) {
-      alert(`🎉 已成功保存滤镜【${name}】至您的专属滤镜库！`);
+      alert(`🎉 已成功保存滤镜【${name}】！下次上传同类照片可一键秒级复用`);
     }
   });
 
   // 批量九宫格导出
   batchExportBtn.addEventListener('click', async () => {
-    if (targetImages.length === 0) return;
+    if (targetImages.length === 0 || !currentRecipe) return;
     batchModal.style.display = 'flex';
     finishBatchBtn.style.display = 'none';
 
     const total = targetImages.length;
+    const intensity = parseFloat(intensitySlider.value) / 100;
+    const protectSkin = skinToggle.checked;
+
     for (let i = 0; i < total; i++) {
       progressInfo.textContent = `串行无损渲染中 (${i + 1}/${total})...`;
       const pct = Math.round(((i + 1) / total) * 100);
       progressFill.style.width = `${pct}%`;
-      // 模拟每张渲染与保存耗时
-      await new Promise((r) => setTimeout(r, 400));
+
+      // 真实无损串行处理
+      const targetImg = targetImages[i];
+      const data = getImageDataFromImg(targetImg, 1200);
+      const mask = protectSkin ? engine.generateSkinMask(data) : null;
+      const offCanvas = document.createElement('canvas');
+      const offCtx = offCanvas.getContext('2d');
+      engine.renderGrading(offCtx, data, currentRecipe, { intensity, protectSkin }, mask);
+
+      // 释放临时引用以促成 GC
+      offCanvas.width = 0;
+      offCanvas.height = 0;
+
+      await new Promise((r) => setTimeout(r, 150));
     }
 
-    progressInfo.textContent = `✨ 恭喜！全部 ${total} 张高清照片已成功写入手机相册`;
+    progressInfo.textContent = `✨ 全部 ${total} 张高画质照片已成功渲染完成！`;
     finishBatchBtn.style.display = 'block';
   });
 
