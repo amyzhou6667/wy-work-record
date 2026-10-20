@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ToneRelay - 手机上传兼容性诊断工具</title>
+  <style>
+    body { font-family: -apple-system, sans-serif; background: #111; color: #fff; padding: 16px; }
+    h2 { font-size: 18px; color: #60a5fa; margin-bottom: 12px; }
+    .box { background: #1e222b; border: 1px solid #333; padding: 14px; border-radius: 10px; margin-bottom: 14px; }
+    .title { font-size: 14px; font-weight: bold; margin-bottom: 6px; }
+    .desc { font-size: 12px; color: #aaa; margin-bottom: 8px; }
+    input { width: 100%; font-size: 14px; padding: 8px 0; }
+    #logBox { background: #000; border: 1px solid #444; border-radius: 8px; padding: 10px; font-family: monospace; font-size: 12px; color: #4ade80; min-height: 120px; white-space: pre-wrap; word-break: break-all; }
+    .btn { background: #2563eb; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <h2>📱 手机上传兼容性诊断</h2>
+  <p style="font-size: 12px; color: #888; margin-bottom: 14px;">请依次点击以下 3 个选项，查看哪个能在您手机上正常打开相册：</p>
+
+  <div class="box">
+    <div class="title">测试项 1：明确指定格式 (避开 DocumentsUI)</div>
+    <div class="desc">accept="image/jpeg,image/png,image/jpg"</div>
+    <input type="file" id="in1" accept="image/jpeg,image/png,image/jpg">
+  </div>
+
+  <div class="box">
+    <div class="title">测试项 2：纯裸 input (无任何限制)</div>
+    <div class="desc">&lt;input type="file"&gt;</div>
+    <input type="file" id="in2">
+  </div>
+
+  <div class="box">
+    <div class="title">测试项 3：通用 image/*</div>
+    <div class="desc">accept="image/*"</div>
+    <input type="file" id="in3" accept="image/*">
+  </div>
+
+  <div class="box">
+    <div class="title">📋 诊断日志输出</div>
+    <div id="logBox">等待测试...</div>
+    <button class="btn" onclick="clearLog()">清空日志</button>
+  </div>
+
+  <script>
+    function log(msg) {
+      const box = document.getElementById('logBox');
+      box.textContent += '\n[' + new Date().toLocaleTimeString() + '] ' + msg;
+      box.scrollTop = box.scrollHeight;
+    }
+    function clearLog() {
+      document.getElementById('logBox').textContent = '等待测试...';
+    }
+
+    ['in1', 'in2', 'in3'].forEach((id) => {
+      const el = document.getElementById(id);
+      el.addEventListener('change', (e) => {
+        const f = e.target.files[0];
+        if (f) {
+          log('✅ ' + id + ' 成功获取文件: ' + f.name + ' (大小: ' + Math.round(f.size/1024) + ' KB, 类型: ' + f.type + ')');
+        } else {
+          log('⚠️ ' + id + ' 取消选择');
+        }
+      });
+    });
+  </script>
+</body>
+</html>

@@ -16,24 +16,31 @@
       <p class="subtitle">解构灵感色调 · 批量无损应用</p>
     </header>
 
-    <!-- 1. 双槽选图区 (使用原生透明覆盖层，杜绝 JS click 代理引发的移动端崩溃) -->
+    <!-- 1. 双槽选图区 (明确指定图片子类型，避开 Android DocumentsUI 闪退 Bug，直连相册) -->
     <section class="slot-section">
       <div class="slot-card" id="refCard">
-        <input type="file" id="refInput" class="file-input-overlay" accept="image/*">
+        <input type="file" id="refInput" class="file-input-overlay" accept="image/jpeg,image/png,image/jpg,image/webp">
         <div class="slot-badge">灵感参考图</div>
         <div class="slot-preview" id="refPreview">
-          <span class="upload-tip">+ 选择参考图</span>
+          <span class="upload-tip">+ 从相册选择参考图</span>
         </div>
       </div>
 
       <div class="slot-card" id="targetCard">
-        <input type="file" id="targetInput" class="file-input-overlay" accept="image/*" multiple>
+        <input type="file" id="targetInput" class="file-input-overlay" accept="image/jpeg,image/png,image/jpg,image/webp" multiple>
         <div class="slot-badge">待修原图 (1~9张)</div>
         <div class="slot-preview" id="targetPreview">
-          <span class="upload-tip">+ 选择待修照片</span>
+          <span class="upload-tip">+ 从相册选择照片</span>
         </div>
       </div>
     </section>
+
+    <!-- 快捷免上传体验按钮 (解决手机端系统权限严苛限制) -->
+    <div style="text-align: center;">
+      <button class="btn btn-secondary" id="demoBtn" style="font-size: 12px; padding: 6px 14px; border-radius: 20px; display: inline-flex; align-items: center; gap: 4px;">
+        💡 点击这里：一键载入示例样张快速试玩
+      </button>
+    </div>
 
     <!-- 2. 状态提示 -->
     <div class="toast-bar" id="toastBar">请分别上传【灵感参考图】与【待修原图】</div>

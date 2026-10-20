@@ -43,11 +43,60 @@
   const batchModal = document.getElementById('batchModal');
   const progressFill = document.getElementById('progressFill');
   const progressInfo = document.getElementById('progressInfo');
-  const finishBatchBtn = document.getElementById('finishBatchBtn');
+  const demoBtn = document.getElementById('demoBtn');
 
   // 原生透明 Input 覆盖层直接捕获点击，无需 JS 代理模拟点击，杜绝移动端系统崩溃
   refInput.addEventListener('change', (e) => handleFileSelect(e, 'ref'));
   targetInput.addEventListener('change', (e) => handleFileSelect(e, 'target'));
+
+  // 一键试玩：直接在内存中生成高质量日落暖调参考图与人像原图
+  if (demoBtn) {
+    demoBtn.addEventListener('click', () => {
+      showToast('正在生成示范样张 (日落胶片调 vs 人像摄影)...');
+      
+      // 1. 生成参考图 (落日暖橘与冷暗部渐变)
+      const refC = document.createElement('canvas');
+      refC.width = 400; refC.height = 300;
+      const refCtx = refC.getContext('2d');
+      const grad = refCtx.createLinearGradient(0, 0, 0, 300);
+      grad.addColorStop(0, '#f97316');   // 顶部暖橘高光
+      grad.addColorStop(0.5, '#eab308'); // 中间暖金
+      grad.addColorStop(1, '#0f172a');   // 暗部深青深蓝
+      refCtx.fillStyle = grad;
+      refCtx.fillRect(0, 0, 400, 300);
+      refImageData = refCtx.getImageData(0, 0, 400, 300);
+      refPreview.innerHTML = `<img src="${refC.toDataURL('image/jpeg')}" style="width:100%;height:100%;object-fit:cover;border-radius:8px;">`;
+
+      // 提取配方
+      currentRecipe = engine.extractRecipe(refImageData);
+      renderRecipeBadges(currentRecipe);
+
+      // 2. 生成待修原图 (人像摄影样张：冷调背景 + 自然肤色面部)
+      const targetC = document.createElement('canvas');
+      targetC.width = 400; targetC.height = 300;
+      const targetCtx = targetC.getContext('2d');
+      // 冷色背景
+      targetCtx.fillStyle = '#1e293b';
+      targetCtx.fillRect(0, 0, 400, 300);
+      // 人物肤色面部
+      targetCtx.fillStyle = '#f6d8b8';
+      targetCtx.beginPath();
+      targetCtx.ellipse(200, 150, 70, 90, 0, 0, Math.PI * 2);
+      targetCtx.fill();
+      // 五官阴影
+      targetCtx.fillStyle = '#e2b490';
+      targetCtx.beginPath();
+      targetCtx.ellipse(200, 150, 20, 35, 0, 0, Math.PI * 2);
+      targetCtx.fill();
+
+      firstTargetThumbnail = targetCtx.getImageData(0, 0, 400, 300);
+      targetPreview.innerHTML = `<img src="${targetC.toDataURL('image/jpeg')}" style="width:100%;height:100%;object-fit:cover;border-radius:8px;">`;
+      batchCount.textContent = '3';
+
+      analyzeAndRenderIfReady();
+      showToast('🎉 示例样张载入就绪！左右拖动卷帘可即时对比，下方可微调强度与肤色保护');
+    });
+  }
 
   function showToast(msg, isError = false) {
     toastBar.textContent = msg;
