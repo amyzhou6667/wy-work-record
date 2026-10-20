@@ -1,0 +1,69 @@
+# 【研发实施任务拆解与测试计划】ToneRelay
+
+| 责任人 | 关联 PRD | 关联 TRD | 计划周期 |
+| :--- | :--- | :--- | :--- |
+| 研发架构与核心工程团队 | [PRD 链接](../prd/PRD-ToneRelay-智能影调迁移与批量修图伴侣.md) | [TRD 链接](./TRD-ToneRelay-技术架构方案.md) | 迭代周期 (MVP) |
+
+---
+
+## 🎯 拆解原则
+- **微任务化**：单个微任务粒度聚焦，代码实现可在独立单元完成并独立验证。
+- **严格 TDD (红-绿-重构)**：基于接口签名契约先行编写测试用例 (Red)，再实现业务功能使其通过 (Green)，杜绝“先写代码后补测试”。
+- **0 失败门禁**：每个任务完成后单测通过率必须为 100%。
+
+---
+
+## 📝 任务清单 (Task Checklist)
+
+### 阶段一：数据契约与测试基线准备
+- [x] **Task 1.1: 数据模型与契约定义**
+  - **改动范围**：`projects/ToneRelay/src/types/index.js`
+  - **目标**：实现 `StyleRecipe`、`GradingOptions`、`BatchTaskItem` 等核心实体与验证方法。
+  - **验收命令**：`node -e "require('./projects/ToneRelay/src/types')"`
+- [x] **Task 1.2: 测试脚手架与 Mock 图像生成工具**
+  - **改动范围**：`projects/ToneRelay/tests/helpers/image_mock.js`
+  - **目标**：构造纯色图、渐变图、含模拟肤色像素的 ImageData 辅助生成器。
+  - **验收命令**：`node -e "require('./projects/ToneRelay/tests/helpers/image_mock')"`
+
+### 阶段二：算法核心引擎 (TDD 闭环)
+- [x] **Task 2.1: 前置参考图特征门控 (Feature Validator)**
+  - **测试用例**：`projects/ToneRelay/tests/validator.test.js`
+  - **实现文件**：`projects/ToneRelay/src/core/validator.js`
+  - **验证命令**：`node --test projects/ToneRelay/tests/validator.test.js`
+- [x] **Task 2.2: 色彩与影调配方解构提取器 (Feature Extractor)**
+  - **测试用例**：`projects/ToneRelay/tests/extractor.test.js`
+  - **实现文件**：`projects/ToneRelay/src/core/extractor.js`
+  - **验证命令**：`node --test projects/ToneRelay/tests/extractor.test.js`
+- [x] **Task 2.3: 智能人像肤色保护软蒙版 (Skin Guard)**
+  - **测试用例**：`projects/ToneRelay/tests/skin_guard.test.js`
+  - **实现文件**：`projects/ToneRelay/src/core/skin_guard.js`
+  - **验证命令**：`node --test projects/ToneRelay/tests/skin_guard.test.js`
+- [x] **Task 2.4: 自动曝光预对齐器 (Exposure Aligner)**
+  - **测试用例**：`projects/ToneRelay/tests/exposure.test.js`
+  - **实现文件**：`projects/ToneRelay/src/core/exposure.js`
+  - **验证命令**：`node --test projects/ToneRelay/tests/exposure.test.js`
+- [x] **Task 2.5: 调色渲染与质感合成引擎 (Grading Renderer)**
+  - **测试用例**：`projects/ToneRelay/tests/renderer.test.js`
+  - **实现文件**：`projects/ToneRelay/src/core/renderer.js`
+  - **验证命令**：`node --test projects/ToneRelay/tests/renderer.test.js`
+
+### 阶段三：批处理流水线与滤镜资产
+- [x] **Task 3.1: 串行防 OOM 批量导出管道 (Batch Pipeline)**
+  - **测试用例**：`projects/ToneRelay/tests/batch_pipeline.test.js`
+  - **实现文件**：`projects/ToneRelay/src/pipeline/batch_pipeline.js`
+  - **验证命令**：`node --test projects/ToneRelay/tests/batch_pipeline.test.js`
+- [x] **Task 3.2: 专属滤镜库管理器 (Preset Store)**
+  - **测试用例**：`projects/ToneRelay/tests/preset_store.test.js`
+  - **实现文件**：`projects/ToneRelay/src/pipeline/preset_store.js`
+  - **验证命令**：`node --test projects/ToneRelay/tests/preset_store.test.js`
+
+### 阶段四：集成验证与轻量端侧交互界面
+- [x] **Task 4.1: 全链路 E2E 自动化测试套件**
+  - **验收标准**：模拟上传参考图 ➡️ 门控检查 ➡️ 提取配方 ➡️ 调节强度 ➡️ 批量九宫格导出，全流程通过。
+  - **验证命令**：`node --test projects/ToneRelay/tests/e2e.test.js`
+- [x] **Task 4.2: 移动端 H5 响应式前端交互原型 (Web Preview)**
+  - **实现文件**：
+    - `projects/ToneRelay/src/ui/index.html`
+    - `projects/ToneRelay/src/ui/styles.css`
+    - `projects/ToneRelay/src/ui/app.js`
+  - **验收标准**：双槽选图、卷帘拖动对比、强度滑块、九宫格批量进度交互完整可用。

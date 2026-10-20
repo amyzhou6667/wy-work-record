@@ -17,15 +17,20 @@
 ToneRelay/
 ├── README.md               # 项目概览与快速说明 (当前文件)
 ├── docs/                   # 文档中心
-│   ├── prd/                # 产品需求文档
-│   │   └── PRD-ToneRelay-智能影调迁移与批量修图伴侣.md
-│   └── trd/                # [待进入研发工作流] 技术架构方案
-└── src/                    # [待开发] 客户端前端、Wasm/WebGL调色渲染引擎
+│   ├── prd/                # 产品需求文档 (PRD)
+│   └── trd/                # 技术设计方案 (TRD) 与微任务清单 (tasks)
+├── src/                    # 核心源码 (类型、算法引擎、批处理管道、H5前端原型)
+└── tests/                  # 单元测试与端到端自动化验证套件 (100% Pass)
 ```
 
 ---
 
-## 📑 核心文档入口
+## 📑 核心文档与测试入口
 
 - **产品需求文档 (PRD)**：[PRD-ToneRelay-智能影调迁移与批量修图伴侣.md](./docs/prd/PRD-ToneRelay-智能影调迁移与批量修图伴侣.md)
-- **技术设计方案 (TRD)**：*等待触发 `/dev-flow` 研发工作流*
+- **技术设计方案 (TRD)**：[TRD-ToneRelay-技术架构方案.md](./docs/trd/TRD-ToneRelay-技术架构方案.md)
+- **研发微任务清单 (Tasks)**：[tasks-ToneRelay.md](./docs/trd/tasks-ToneRelay.md)
+- **全量测试验收命令**：
+  ```bash
+  node --test projects/ToneRelay/tests/*.test.js
+  ```

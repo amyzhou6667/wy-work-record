@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>ToneRelay - 智能影调迁移伴侣</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-container">
+    <header class="app-header">
+      <div class="logo-title">
+        <span class="logo-icon">🎨</span>
+        <h1>ToneRelay</h1>
+      </div>
+      <p class="subtitle">解构灵感色调 · 批量无损应用</p>
+    </header>
+
+    <!-- 1. 双槽选图区 -->
+    <section class="slot-section">
+      <div class="slot-card" id="refCard">
+        <div class="slot-badge">灵感参考图</div>
+        <div class="slot-preview" id="refPreview">
+          <span class="upload-tip">+ 选择参考图</span>
+        </div>
+        <input type="file" id="refInput" accept="image/*" hidden>
+      </div>
+
+      <div class="slot-card" id="targetCard">
+        <div class="slot-badge">待修原图 (1~9张)</div>
+        <div class="slot-preview" id="targetPreview">
+          <span class="upload-tip">+ 选择待修照片</span>
+        </div>
+        <input type="file" id="targetInput" accept="image/*" multiple hidden>
+      </div>
+    </section>
+
+    <!-- 2. 状态提示 -->
+    <div class="toast-bar" id="toastBar">请分别上传【灵感参考图】与【待修原图】</div>
+
+    <!-- 3. 打样卷帘对比工作台 -->
+    <section class="preview-section" id="previewSection" style="display: none;">
+      <div class="split-viewport" id="splitViewport">
+        <canvas id="canvasAfter"></canvas>
+        <div class="split-overlay" id="splitOverlay">
+          <canvas id="canvasBefore"></canvas>
+        </div>
+        <div class="split-divider" id="splitDivider">
+          <div class="divider-handle"></div>
+        </div>
+        <div class="split-label before-label">Original</div>
+        <div class="split-label after-label">Styled</div>
+      </div>
+
+      <!-- 风格配方卡片 -->
+      <div class="recipe-card" id="recipeCard">
+        <div class="recipe-header">
+          <span class="recipe-title">✨ 提取调色逻辑</span>
+          <div class="palette-group" id="paletteGroup"></div>
+        </div>
+        <div class="tags-group" id="tagsGroup"></div>
+      </div>
+
+      <!-- 控制面板 -->
+      <div class="control-panel">
+        <div class="control-row">
+          <div class="control-label">
+            <span>调色强度</span>
+            <span class="value-text" id="intensityText">100%</span>
+          </div>
+          <input type="range" id="intensitySlider" min="0" max="100" value="100" class="slider-control">
+        </div>
+
+        <div class="control-row toggle-row">
+          <label class="switch-label">
+            <span>🛡️ 智能保留自然肤色 (防止发青发灰)</span>
+            <input type="checkbox" id="skinToggle" checked>
+            <span class="switch-slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- 操作按钮栏 -->
+      <div class="action-bar">
+        <button class="btn btn-secondary" id="saveFilterBtn">⭐ 存为专属滤镜</button>
+        <button class="btn btn-primary" id="batchExportBtn">🚀 批量应用并导出 (<span id="batchCount">1</span>张)</button>
+      </div>
+    </section>
+
+    <!-- 4. 批量处理弹窗 -->
+    <div class="modal-backdrop" id="batchModal" style="display: none;">
+      <div class="modal-dialog">
+        <h3>九宫格批量导出中</h3>
+        <p class="modal-subtext">采用移动端防 OOM 串行流水线无损渲染...</p>
+        <div class="progress-track">
+          <div class="progress-fill" id="progressFill" style="width: 0%;"></div>
+        </div>
+        <div class="progress-info" id="progressInfo">准备就绪 0/0</div>
+        <div class="modal-actions">
+          <button class="btn btn-primary" id="finishBatchBtn" style="display: none;">完成并已存入相册</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
