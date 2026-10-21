@@ -173,10 +173,16 @@ function extractRecipe(imageData) {
       }
     }
 
+    const shadowHue = Math.min(360, avgGHue + 6);
+    const highlightHue = Math.max(0, avgGHue - 5);
+
     greenChannel = {
       present: true,
+      directReuse: true,
       targetHue: avgGHue,
       targetSat: avgGSat,
+      shadowHue,
+      highlightHue,
       targetVal: avgGVal,
       styleName
     };
@@ -184,8 +190,11 @@ function extractRecipe(imageData) {
     // 默认高质感冷青灰绿倾向 (140°, 饱和度稳妥在 0.28)
     greenChannel = {
       present: false,
+      directReuse: false,
       targetHue: 140,
       targetSat: 0.28,
+      shadowHue: 145,
+      highlightHue: 135,
       targetVal: 0.55,
       styleName: '质感青墨绿'
     };

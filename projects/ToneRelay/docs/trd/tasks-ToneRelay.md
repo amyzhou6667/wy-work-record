@@ -79,4 +79,8 @@
 - [x] **Task 5.3: 渲染引擎深度自适应压制与全局饱和度保护**
   - **改动范围**：`projects/ToneRelay/src/core/renderer.js`、`projects/ToneRelay/src/ui/engine.js`
   - **目标**：建立植被平滑引导矩阵，施加灰绿深度阻尼压缩，并在全局饱和度提升环节引入植被防打架保护。
+- [x] **Task 5.4: 语义色区直接 1:1 复用与“换色不换光”光影保留**
+  - **改动范围**：`projects/ToneRelay/src/core/renderer.js`、`projects/ToneRelay/src/ui/engine.js`、`projects/ToneRelay/tests/green_tuning.test.js`
+  - **目标**：实现语义色区直复用架构，将待修图绿色通道的色相与饱和度 1:1 替换为参考图绿色，同时 100% 完整保留原图明暗纹理与立体感。
+
 

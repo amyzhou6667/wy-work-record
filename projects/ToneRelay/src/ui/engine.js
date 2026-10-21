@@ -205,18 +205,27 @@ window.ToneRelayEngine = (function () {
         }
       }
 
+      const shadowHue = Math.min(360, avgGHue + 6);
+      const highlightHue = Math.max(0, avgGHue - 5);
+
       greenChannel = {
         present: true,
+        directReuse: true,
         targetHue: avgGHue,
         targetSat: avgGSat,
+        shadowHue,
+        highlightHue,
         targetVal: avgGVal,
         styleName
       };
     } else {
       greenChannel = {
         present: false,
+        directReuse: false,
         targetHue: 140,
         targetSat: 0.28,
+        shadowHue: 145,
+        highlightHue: 135,
         targetVal: 0.55,
         styleName: '质感青墨绿'
       };
@@ -331,6 +340,8 @@ window.ToneRelayEngine = (function () {
     const targetGreenHue = greenChannel ? greenChannel.targetHue : 140;
     const targetGreenSat = greenChannel ? greenChannel.targetSat : 0.28;
     const targetGreenVal = greenChannel ? (greenChannel.targetVal || 0.55) : 0.55;
+    const targetGreenSh = greenChannel && greenChannel.shadowHue ? greenChannel.shadowHue : (targetGreenHue + 5);
+    const targetGreenHi = greenChannel && greenChannel.highlightHue ? greenChannel.highlightHue : (targetGreenHue - 5);
 
     const cx = width / 2, cy = height / 2;
     const maxDist = Math.hypot(cx, cy);
@@ -341,19 +352,27 @@ window.ToneRelayEngine = (function () {
       const origR = src[idx], origG = src[idx + 1], origB = src[idx + 2], origA = src[idx + 3];
       let r = origR, g = origG, b = origB;
 
-      // 1. 植被与黄绿联动靶向调色
+      // 1. 语义色彩通道直接 1:1 复用 (Direct Channel Reuse: 换色不换光)
       const [h, s, v] = rgbToHsv(r, g, b);
       let plantWeight = 0;
-      if (h >= 35 && h <= 175 && s >= 0.06) {
+      if (h >= 35 && h <= 175 && s >= 0.05) {
         const dist = Math.abs(h - 105);
-        plantWeight = Math.max(0, 1.0 - dist / 70);
-        if (plantWeight > 0) {
-          const newHue = h * (1 - plantWeight * 0.85) + targetGreenHue * (plantWeight * 0.85);
-          const targetS = Math.min(s, Math.max(0.12, targetGreenSat * 1.15));
-          const newSat = s * (1 - plantWeight * 0.85) + targetS * (plantWeight * 0.85);
-          const newV = v * (1 - plantWeight * 0.2) + targetGreenVal * (plantWeight * 0.2);
+        if (dist <= 40) {
+          plantWeight = 1.0;
+        } else {
+          plantWeight = Math.max(0, 1.0 - (dist - 40) / 30);
+        }
 
-          const [gr, gg, gb] = hsvToRgb(newHue, newSat, newV);
+        if (plantWeight > 0 && greenChannel && greenChannel.present) {
+          let desiredH = targetGreenHue;
+          if (v > 0.65) desiredH = targetGreenHi;
+          else if (v < 0.35) desiredH = targetGreenSh;
+          const newHue = h * (1 - plantWeight) + desiredH * plantWeight;
+
+          const newSat = s * (1 - plantWeight) + targetGreenSat * plantWeight;
+          const newVal = v * (1 - plantWeight * 0.1) + targetGreenVal * (plantWeight * 0.1);
+
+          const [gr, gg, gb] = hsvToRgb(newHue, newSat, newVal);
           r = r * (1 - plantWeight) + gr * plantWeight;
           g = g * (1 - plantWeight) + gg * plantWeight;
           b = b * (1 - plantWeight) + gb * plantWeight;
@@ -366,29 +385,33 @@ window.ToneRelayEngine = (function () {
       g += tint * 0.8;
 
       // 3. 对比度与立体感
-      r = (r - 128) * contrast + 128;
-      g = (g - 128) * contrast + 128;
-      b = (b - 128) * contrast + 128;
+      if (contrast !== 1.0) {
+        const effContrast = 1.0 + (contrast - 1.0) * (1.0 - plantWeight * 0.5);
+        r = (r - 128) * effContrast + 128;
+        g = (g - 128) * effContrast + 128;
+        b = (b - 128) * effContrast + 128;
+      }
 
-      // 4. 饱和度 (植被保护，防止全局拉爆)
+      // 4. 饱和度 (植被区域免疫全局拉爆)
       if (saturation !== 1.0) {
-        const effectiveSat = 1.0 + (saturation - 1.0) * (1.0 - plantWeight * 0.92);
+        const effectiveSat = 1.0 + (saturation - 1.0) * (1.0 - plantWeight);
         const gray = 0.299 * r + 0.587 * g + 0.114 * b;
         r = gray + (r - gray) * effectiveSat;
         g = gray + (g - gray) * effectiveSat;
         b = gray + (b - gray) * effectiveSat;
       }
 
-      // 5. 高光与阴影色调分离注入 (Split Toning)
+      // 5. 高光与阴影色调分离注入 (Split Toning，植被区屏蔽污染)
       const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+      const splitToneShield = 1.0 - plantWeight;
       if (lum > 110) {
-        const w = Math.min(1.0, (lum - 110) / 120);
+        const w = Math.min(1.0, (lum - 110) / 120) * splitToneShield;
         r += hiOffset[0] * hiWeight * w;
         g += hiOffset[1] * hiWeight * w;
         b += hiOffset[2] * hiWeight * w;
       }
       if (lum < 150) {
-        const w = Math.min(1.0, (150 - lum) / 120);
+        const w = Math.min(1.0, (150 - lum) / 120) * splitToneShield;
         r += shOffset[0] * shWeight * w;
         g += shOffset[1] * shWeight * w;
         b += shOffset[2] * shWeight * w;

@@ -1,5 +1,5 @@
 /**
- * ToneRelay - 调色渲染与质感合成引擎 (专业多通道色相映射增强版 - 黄绿联动与灰绿深度压制)
+ * ToneRelay - 调色渲染与质感合成引擎 (语义通道色彩直接复用增强版 - Direct Channel Palette Transfer)
  */
 const { normalizeGradingOptions } = require('../types');
 const { rgbToHsv } = require('./extractor');
@@ -81,6 +81,8 @@ function renderGrading(targetImageData, recipe, options, skinMask) {
   const targetGreenHue = greenChannel ? greenChannel.targetHue : 140;
   const targetGreenSat = greenChannel ? greenChannel.targetSat : 0.28;
   const targetGreenVal = greenChannel ? (greenChannel.targetVal || 0.55) : 0.55;
+  const targetGreenSh = greenChannel && greenChannel.shadowHue ? greenChannel.shadowHue : (targetGreenHue + 5);
+  const targetGreenHi = greenChannel && greenChannel.highlightHue ? greenChannel.highlightHue : (targetGreenHue - 5);
 
   const cx = width / 2;
   const cy = height / 2;
@@ -98,25 +100,32 @@ function renderGrading(targetImageData, recipe, options, skinMask) {
     let g = origG;
     let b = origB;
 
-    // 1. 植被与黄绿联动靶向调色 (覆盖植物黄、嫩绿、草绿、青绿与墨绿)
+    // 1. 语义色彩通道直接 1:1 复用 (Direct Channel Reuse: 换色不换光)
     const [h, s, v] = rgbToHsv(r, g, b);
     let plantWeight = 0;
-    if (h >= 35 && h <= 175 && s >= 0.06) {
-      // 距离植被中心 105° 的高斯平滑权重
+    if (h >= 35 && h <= 175 && s >= 0.05) {
+      // 核心植被区间 (60°~150°) 达到满归属度 1.0，边缘平滑衰减
       const dist = Math.abs(h - 105);
-      plantWeight = Math.max(0, 1.0 - dist / 70);
-      if (plantWeight > 0) {
-        // 色相向目标绿（如莫兰迪青冷绿或复古橄榄绿）牵引
-        const newHue = h * (1 - plantWeight * 0.85) + targetGreenHue * (plantWeight * 0.85);
+      if (dist <= 40) {
+        plantWeight = 1.0;
+      } else {
+        plantWeight = Math.max(0, 1.0 - (dist - 40) / 30);
+      }
 
-        // 灰绿核心：深度自适应饱和度压制 (即使原图高达 0.9，也能精准压制到接近目标灰绿)
-        const targetS = Math.min(s, Math.max(0.12, targetGreenSat * 1.15));
-        const newSat = s * (1 - plantWeight * 0.85) + targetS * (plantWeight * 0.85);
+      if (plantWeight > 0 && greenChannel && greenChannel.present) {
+        // 色相直接复用：高光挂钩参考图高光绿，暗部挂钩参考图暗部绿
+        let desiredH = targetGreenHue;
+        if (v > 0.65) desiredH = targetGreenHi;
+        else if (v < 0.35) desiredH = targetGreenSh;
+        const newHue = h * (1 - plantWeight) + desiredH * plantWeight;
 
-        // 明度微调：赋予灰调质感
-        const newV = v * (1 - plantWeight * 0.2) + targetGreenVal * (plantWeight * 0.2);
+        // 饱和度直接 1:1 复用：完全复用参考图的真实低饱和灰度！
+        const newSat = s * (1 - plantWeight) + targetGreenSat * plantWeight;
 
-        const [gr, gg, gb] = hsvToRgb(newHue, newSat, newV);
+        // 明度质感微调：保持原图层次的同时向高级胶片感微调
+        const newVal = v * (1 - plantWeight * 0.1) + targetGreenVal * (plantWeight * 0.1);
+
+        const [gr, gg, gb] = hsvToRgb(newHue, newSat, newVal);
         r = r * (1 - plantWeight) + gr * plantWeight;
         g = g * (1 - plantWeight) + gg * plantWeight;
         b = b * (1 - plantWeight) + gb * plantWeight;
@@ -129,30 +138,33 @@ function renderGrading(targetImageData, recipe, options, skinMask) {
     g += tint * 0.8;
 
     // 3. 对比度与立体感 (Contrast S-Curve)
-    r = (r - 128) * contrast + 128;
-    g = (g - 128) * contrast + 128;
-    b = (b - 128) * contrast + 128;
+    if (contrast !== 1.0) {
+      const effContrast = 1.0 + (contrast - 1.0) * (1.0 - plantWeight * 0.5);
+      r = (r - 128) * effContrast + 128;
+      g = (g - 128) * effContrast + 128;
+      b = (b - 128) * effContrast + 128;
+    }
 
-    // 4. 饱和度调整 (引入植被保护，防止全局饱和度拉爆灰绿)
+    // 4. 饱和度调整 (植被区域完全免疫全局过饱和拉爆，彻底锁定复用灰度)
     if (saturation !== 1.0) {
-      // 植被区域免受全局过度饱和拉高影响，锁定灰阶沉淀
-      const effectiveSat = 1.0 + (saturation - 1.0) * (1.0 - plantWeight * 0.92);
+      const effectiveSat = 1.0 + (saturation - 1.0) * (1.0 - plantWeight);
       const gray = 0.299 * r + 0.587 * g + 0.114 * b;
       r = gray + (r - gray) * effectiveSat;
       g = gray + (g - gray) * effectiveSat;
       b = gray + (b - gray) * effectiveSat;
     }
 
-    // 5. 高光与暗部色调分离注入 (Split Toning)
+    // 5. 高光与暗部色调分离注入 (Split Toning，植被满权重处完全不被高光暗部染色污染)
     const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+    const splitToneShield = 1.0 - plantWeight;
     if (lum > 110) {
-      const w = Math.min(1.0, (lum - 110) / 120);
+      const w = Math.min(1.0, (lum - 110) / 120) * splitToneShield;
       r += hiOffset[0] * hiWeight * w;
       g += hiOffset[1] * hiWeight * w;
       b += hiOffset[2] * hiWeight * w;
     }
     if (lum < 150) {
-      const w = Math.min(1.0, (150 - lum) / 120);
+      const w = Math.min(1.0, (150 - lum) / 120) * splitToneShield;
       r += shOffset[0] * shWeight * w;
       g += shOffset[1] * shWeight * w;
       b += shOffset[2] * shWeight * w;
@@ -175,7 +187,7 @@ function renderGrading(targetImageData, recipe, options, skinMask) {
       b *= vigFactor;
     }
 
-    // 7. 智能人像肤色保护 (保护人脸红润，不被绿色或冷调侵染)
+    // 7. 智能人像肤色保护 (保护人脸红润)
     if (protectSkin && skinMask && skinMask[p] > 0.1) {
       const skinW = skinMask[p];
       const origLum = 0.299 * origR + 0.587 * origG + 0.114 * origB;

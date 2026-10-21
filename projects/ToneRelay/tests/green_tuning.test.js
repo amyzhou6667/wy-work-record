@@ -95,3 +95,71 @@ test('GreenTuning: 渲染引擎应将原图高饱和刺眼鲜绿深度压制为�
   // 3. 不应死黑或发白，明度保持在自然范围内
   assert.ok(outV >= 0.35 && outV <= 0.85, `明度正常，实际为: ${outV.toFixed(2)}`);
 });
+
+test('DirectReuse: 待修图绿色区域应直接 1:1 复用参考图绿色的色相与饱和度，并完整保留原图明暗光影层次', () => {
+  // 原图：草叶上有明显光影对比 (一片在阴影处 V=0.38, 一片在阳光高光处 V=0.86，两者均为艳绿 H=95°, S=0.88)
+  const shadowGreen = [35, 97, 12, 255]; // HSV: H≈95°, S≈0.88, V≈0.38
+  const brightGreen = [80, 219, 26, 255]; // HSV: H≈95°, S≈0.88, V≈0.86
+  const targetImg = createMockImageData(2, 1, (x) => (x === 0 ? shadowGreen : brightGreen));
+
+  // 参考图提取出的精准灰绿通道 (目标色相 145°, 目标饱和度 0.18)
+  const recipeWithDirectGreen = {
+    id: 'test_direct_reuse',
+    createdAt: Date.now(),
+    exposureOffset: 0,
+    contrast: 1.0,
+    saturation: 1.0,
+    temperature: 0,
+    tint: 0,
+    highlights: { hue: 35, saturation: 0.3, weight: 0.5 },
+    shadows: { hue: 210, saturation: 0.3, weight: 0.5 },
+    greenChannel: {
+      present: true,
+      directReuse: true,      // 启用直接通道复用
+      targetHue: 145,         // 目标莫兰迪青冷灰绿色相
+      targetSat: 0.18,        // 目标超低饱和度灰阶
+      shadowHue: 150,         // 暗部青墨绿
+      highlightHue: 140,      // 高光薄荷灰绿
+      targetVal: 0.50,
+      styleName: '莫兰迪青冷灰绿'
+    },
+    filmGrain: 0,
+    vignette: 0,
+    tags: ['莫兰迪灰绿直接复用'],
+    dominantPalette: ['#758a7e', '#4f6358', '#2d3b34']
+  };
+
+  const rendered = renderGrading(targetImg, recipeWithDirectGreen, { intensity: 1.0, protectSkin: true });
+
+  const [sR, sG, sB] = [rendered.data[0], rendered.data[1], rendered.data[2]];
+  const [bR, bG, bB] = [rendered.data[4], rendered.data[5], rendered.data[6]];
+
+  const [shH, shS, shV] = rgbToHsv(sR, sG, sB);
+  const [brH, brS, brV] = rgbToHsv(bR, bG, bB);
+
+  // 1. 饱和度直接 1:1 复用：必须与目标饱和度 0.18 极度吻合 (误差 <= 0.05)
+  assert.ok(
+    Math.abs(shS - 0.18) <= 0.06,
+    `暗部绿色饱和度应精准复用参考图(≈0.18)，实际为: ${shS.toFixed(2)}`
+  );
+  assert.ok(
+    Math.abs(brS - 0.18) <= 0.06,
+    `高光绿色饱和度应精准复用参考图(≈0.18)，实际为: ${brS.toFixed(2)}`
+  );
+
+  // 2. 色相直接复用：必须精确落入目标青灰绿范围 (138°~152°)
+  assert.ok(
+    shH >= 138 && shH <= 155,
+    `暗部色相应直接复用为青墨绿(138°~155°)，实际为: ${shH.toFixed(1)}°`
+  );
+  assert.ok(
+    brH >= 135 && brH <= 150,
+    `高光色相应直接复用为薄荷灰绿(135°~150°)，实际为: ${brH.toFixed(1)}°`
+  );
+
+  // 3. 原图光影明暗层次完全保留：高光像素的明度必须明显高于阴影像素
+  assert.ok(
+    brV - shV >= 0.40,
+    `原图的光影梯度必须完整保留 (高光与阴影差值应 >= 0.40)，实际为: ${(brV - shV).toFixed(2)}`
+  );
+});
