@@ -40,11 +40,20 @@
   const batchCount = document.getElementById('batchCount');
 
   const batchModal = document.getElementById('batchModal');
+  const progressTrack = document.getElementById('progressTrack');
   const progressFill = document.getElementById('progressFill');
   const progressInfo = document.getElementById('progressInfo');
+  const batchGallery = document.getElementById('batchGallery');
+  const finishBatchBtn = document.getElementById('finishBatchBtn');
   const demoBtn = document.getElementById('demoBtn');
+  const wxBanner = document.getElementById('wxBanner');
 
-  // 原生透明 Input 覆盖层直接捕获点击，无需 JS 代理模拟点击，杜绝移动端系统崩溃
+  // 微信环境检测并提示
+  if (/MicroMessenger/i.test(navigator.userAgent) && wxBanner) {
+    wxBanner.style.display = 'block';
+  }
+
+  // 标准 label 触发文件选择
   refInput.addEventListener('change', (e) => handleFileSelect(e, 'ref'));
   targetInput.addEventListener('change', (e) => handleFileSelect(e, 'target'));
 
@@ -343,26 +352,37 @@
     }
   });
 
-  // 批量九宫格导出 (严格单任务串行队列，处理完立即销毁，防手机 OOM 闪退)
+  // 保存/导出调色照片 (完美兼容微信长按保存 + 浏览器直接下载)
   batchExportBtn.addEventListener('click', async () => {
-    if (targetFiles.length === 0 || !currentRecipe) return;
+    if (!currentRecipe || (!firstTargetThumbnail && targetFiles.length === 0)) return;
+
     batchModal.style.display = 'flex';
     finishBatchBtn.style.display = 'none';
+    batchGallery.innerHTML = '';
+    progressTrack.style.display = 'block';
 
-    const total = targetFiles.length;
     const intensity = parseFloat(intensitySlider.value) / 100;
     const protectSkin = skinToggle.checked;
 
+    // 如果用户是通过一键试玩或者只选了一张
+    const isSingleThumbnail = targetFiles.length === 0 && firstTargetThumbnail;
+    const total = isSingleThumbnail ? 1 : targetFiles.length;
+
     for (let i = 0; i < total; i++) {
-      progressInfo.textContent = `串行无损渲染中 (${i + 1}/${total})...`;
+      progressInfo.textContent = `正在生成高清照片 (${i + 1}/${total})...`;
       const pct = Math.round(((i + 1) / total) * 100);
       progressFill.style.width = `${pct}%`;
 
       try {
-        // 逐张从 File 句柄按需解码
-        const { imageData } = await loadScaledImageData(targetFiles[i], 1200);
+        let imageData = null;
+        if (isSingleThumbnail) {
+          imageData = firstTargetThumbnail;
+        } else {
+          const loaded = await loadScaledImageData(targetFiles[i], 1200);
+          imageData = loaded.imageData;
+        }
+
         const mask = protectSkin ? engine.generateSkinMask(imageData) : null;
-        
         const offCanvas = document.createElement('canvas');
         offCanvas.width = imageData.width;
         offCanvas.height = imageData.height;
@@ -371,17 +391,38 @@
         const rendered = engine.renderGrading(offCtx, imageData, currentRecipe, { intensity, protectSkin }, mask);
         offCtx.putImageData(rendered, 0, 0);
 
-        // 立即清空并解除引用促成 GC
+        const dataUrl = offCanvas.toDataURL('image/jpeg', 0.92);
+
+        // 创建供微信长按保存的卡片
+        const card = document.createElement('div');
+        card.className = 'gallery-card';
+        card.innerHTML = `
+          <img src="${dataUrl}" alt="成品照片 ${i + 1}">
+          <div class="gallery-tip">👇 长按上方图片 ➡️ 选择【保存到手机/保存图片】</div>
+        `;
+        batchGallery.appendChild(card);
+
+        // 尝试触发非微信外部浏览器的原生直接下载
+        try {
+          const a = document.createElement('a');
+          a.download = `ToneRelay_调色照片_${i + 1}.jpg`;
+          a.href = dataUrl;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        } catch (e) {}
+
         offCanvas.width = 0;
         offCanvas.height = 0;
       } catch (err) {
         console.warn(`第 ${i + 1} 张处理警告:`, err);
       }
 
-      await new Promise((r) => setTimeout(r, 120));
+      await new Promise((r) => setTimeout(r, 100));
     }
 
-    progressInfo.textContent = `✨ 全部 ${total} 张高画质照片已成功渲染完成！`;
+    progressTrack.style.display = 'none';
+    progressInfo.textContent = `✨ 全部 ${total} 张照片已就绪！请长按图片存入相册：`;
     finishBatchBtn.style.display = 'block';
   });
 

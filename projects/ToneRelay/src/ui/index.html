@@ -8,6 +8,11 @@
 </head>
 <body>
   <div class="app-container">
+    <!-- 微信环境专属引导横幅 -->
+    <div class="wx-tip-banner" id="wxBanner" style="display: none;">
+      💡 微信提示：若在微信内选图受限，可点击右上角【...】选择【在浏览器打开】体验更顺畅。
+    </div>
+
     <header class="app-header">
       <div class="logo-title">
         <span class="logo-icon">🎨</span>
@@ -16,23 +21,23 @@
       <p class="subtitle">解构灵感色调 · 批量无损应用</p>
     </header>
 
-    <!-- 1. 双槽选图区 (明确指定图片子类型，避开 Android DocumentsUI 闪退 Bug，直连相册) -->
+    <!-- 1. 双槽选图区 (使用标准 HTML label 关联，100% 杜绝微信/安卓覆盖层防欺诈崩溃) -->
     <section class="slot-section">
-      <div class="slot-card" id="refCard">
-        <input type="file" id="refInput" class="file-input-overlay" accept="image/jpeg,image/png,image/jpg,image/webp">
+      <label class="slot-card" for="refInput" id="refCard">
         <div class="slot-badge">灵感参考图</div>
         <div class="slot-preview" id="refPreview">
           <span class="upload-tip">+ 从相册选择参考图</span>
         </div>
-      </div>
+      </label>
+      <input type="file" id="refInput" accept="image/jpeg,image/png,image/jpg,image/webp" class="visually-hidden-input">
 
-      <div class="slot-card" id="targetCard">
-        <input type="file" id="targetInput" class="file-input-overlay" accept="image/jpeg,image/png,image/jpg,image/webp" multiple>
+      <label class="slot-card" for="targetInput" id="targetCard">
         <div class="slot-badge">待修原图 (1~9张)</div>
         <div class="slot-preview" id="targetPreview">
           <span class="upload-tip">+ 从相册选择照片</span>
         </div>
-      </div>
+      </label>
+      <input type="file" id="targetInput" accept="image/jpeg,image/png,image/jpg,image/webp" multiple class="visually-hidden-input">
     </section>
 
     <!-- 快捷免上传体验按钮 (解决手机端系统权限严苛限制) -->
@@ -48,8 +53,8 @@
     <!-- 3. 打样卷帘对比工作台 (1:1 像素级硬件 clip-path 对比，杜绝挤压变形) -->
     <section class="preview-section" id="previewSection" style="display: none;">
       <div class="split-viewport" id="splitViewport">
-        <canvas id="canvasAfter" class="split-canvas"></canvas>
         <canvas id="canvasBefore" class="split-canvas"></canvas>
+        <canvas id="canvasAfter" class="split-canvas"></canvas>
         <div class="split-divider" id="splitDivider">
           <div class="divider-handle"></div>
         </div>
@@ -88,21 +93,29 @@
       <!-- 操作按钮栏 -->
       <div class="action-bar">
         <button class="btn btn-secondary" id="saveFilterBtn">⭐ 存为专属滤镜</button>
-        <button class="btn btn-primary" id="batchExportBtn">🚀 批量应用并导出 (<span id="batchCount">1</span>张)</button>
+        <button class="btn btn-primary" id="batchExportBtn">🚀 保存调色照片 (<span id="batchCount">1</span>张)</button>
       </div>
     </section>
 
-    <!-- 4. 批量处理弹窗 -->
+    <!-- 4. 保存与导出弹窗 (针对微信长按保存 + 浏览器下载双兼容) -->
     <div class="modal-backdrop" id="batchModal" style="display: none;">
       <div class="modal-dialog">
-        <h3>九宫格批量导出中</h3>
-        <p class="modal-subtext">采用移动端防 OOM 串行流水线无损渲染...</p>
-        <div class="progress-track">
+        <h3 id="modalTitle">调色成品图片</h3>
+        <p class="modal-subtext" id="modalSubtext">
+          👇 <strong style="color: #4ade80;">长按下方图片，点击【保存图片】存入手机相册！</strong>
+        </p>
+
+        <!-- 进度条 -->
+        <div class="progress-track" id="progressTrack">
           <div class="progress-fill" id="progressFill" style="width: 0%;"></div>
         </div>
-        <div class="progress-info" id="progressInfo">准备就绪 0/0</div>
-        <div class="modal-actions">
-          <button class="btn btn-primary" id="finishBatchBtn" style="display: none;">完成并已存入相册</button>
+        <div class="progress-info" id="progressInfo">正在生成中...</div>
+
+        <!-- 高清成品图片展示流 (供长按保存到相册) -->
+        <div class="batch-gallery" id="batchGallery"></div>
+
+        <div class="modal-actions" style="margin-top: 14px;">
+          <button class="btn btn-primary" id="finishBatchBtn" style="width: 100%;">关闭 / 继续修图</button>
         </div>
       </div>
     </div>
