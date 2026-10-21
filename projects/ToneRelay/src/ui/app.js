@@ -312,13 +312,13 @@
     renderGradingCanvas();
   });
 
-  // 卷帘滑动交互 (硬件级 clip-path 对比，两图 1:1 绝对重合无拉伸)
+  // 卷帘滑动交互 (左侧调色后 Styled，右侧原片 Before)
   function updateSplitPosition(clientX) {
     const rect = splitViewport.getBoundingClientRect();
     let x = clientX - rect.left;
     x = Math.max(0, Math.min(rect.width, x));
     const percent = ((x / rect.width) * 100).toFixed(1);
-    canvasBefore.style.clipPath = `polygon(0 0, ${percent}% 0, ${percent}% 100%, 0 100%)`;
+    canvasAfter.style.clipPath = `polygon(0 0, ${percent}% 0, ${percent}% 100%, 0 100%)`;
     splitDivider.style.left = `${percent}%`;
   }
 

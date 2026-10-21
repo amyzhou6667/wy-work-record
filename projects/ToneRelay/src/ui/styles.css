@@ -168,13 +168,13 @@ body {
 }
 
 #canvasBefore {
-  z-index: 2;
-  /* 硬件级左侧 50% 完美无变形裁剪 */
-  clip-path: polygon(0 0, 50% 0, 50% 100%, 0 100%);
+  z-index: 1;
 }
 
 #canvasAfter {
-  z-index: 1;
+  z-index: 2;
+  /* 硬件级左侧区域显示调色后 (Styled)，初始 50% */
+  clip-path: polygon(0 0, 50% 0, 50% 100%, 0 100%);
 }
 
 .split-divider {
@@ -210,9 +210,10 @@ body {
   font-weight: 600;
   background: rgba(0, 0, 0, 0.6);
   border-radius: 4px;
+  z-index: 4;
 }
-.before-label { left: 8px; }
-.after-label { right: 8px; }
+.after-label { left: 8px; }
+.before-label { right: 8px; }
 
 /* 配方卡片 */
 .recipe-card {
