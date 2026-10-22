@@ -1,5 +1,6 @@
 /**
- * ToneRelay - 调色渲染与质感合成引擎 (语义通道色彩直接复用增强版 - Direct Channel Palette Transfer)
+ * ToneRelay - 通用调色渲染与多阶段合成引擎 (Universal Grading & Texture Compositor)
+ * 支持：光影曲线分位数映射、黑位抬升(胶片灰雾)、电影冷暖对冲、明度自适应真实颗粒、通道直接复用与人像肤色保护
  */
 const { normalizeGradingOptions } = require('../types');
 const { rgbToHsv } = require('./extractor');
@@ -41,7 +42,7 @@ function hueToRgbOffset(hue) {
 }
 
 /**
- * 执行专业影调渲染
+ * 执行通用影调多阶段渲染
  * @param {ImageData} targetImageData 
  * @param {import('../types').StyleRecipe} recipe 
  * @param {import('../types').GradingOptions} options 
@@ -63,26 +64,35 @@ function renderGrading(targetImageData, recipe, options, skinMask) {
 
   const {
     contrast = 1.15,
-    saturation = 1.15,
+    saturation = 1.1,
     temperature = 0,
     tint = 0,
     highlights,
     shadows,
+    toneCurve,
+    cinemaSplit,
     greenChannel,
     filmGrain = 0,
     vignette = 0
   } = recipe;
 
+  // 高光暗部投影
   const hiOffset = highlights ? hueToRgbOffset(highlights.hue) : [0, 0, 0];
   const shOffset = shadows ? hueToRgbOffset(shadows.hue) : [0, 0, 0];
-  const hiWeight = highlights ? Math.max(0.2, highlights.saturation) * (highlights.weight || 0.6) * 110 : 0;
-  const shWeight = shadows ? Math.max(0.2, shadows.saturation) * (shadows.weight || 0.6) * 110 : 0;
+  const isCinema = cinemaSplit && cinemaSplit.isCinemaTealOrange;
+  const hiWeight = highlights ? Math.max(0.2, highlights.saturation) * (highlights.weight || 0.6) * (isCinema ? 130 : 100) : 0;
+  const shWeight = shadows ? Math.max(0.2, shadows.saturation) * (shadows.weight || 0.6) * (isCinema ? 130 : 100) : 0;
 
+  // 绿色植被通道配置
   const targetGreenHue = greenChannel ? greenChannel.targetHue : 140;
   const targetGreenSat = greenChannel ? greenChannel.targetSat : 0.28;
   const targetGreenVal = greenChannel ? (greenChannel.targetVal || 0.55) : 0.55;
   const targetGreenSh = greenChannel && greenChannel.shadowHue ? greenChannel.shadowHue : (targetGreenHue + 5);
   const targetGreenHi = greenChannel && greenChannel.highlightHue ? greenChannel.highlightHue : (targetGreenHue - 5);
+
+  // 胶片分位数曲线参数
+  const fadeBlack = (toneCurve && toneCurve.fadeBlack) ? toneCurve.fadeBlack : 0;
+  const isHighKey = toneCurve ? toneCurve.isHighKey : false;
 
   const cx = width / 2;
   const cy = height / 2;
@@ -100,11 +110,10 @@ function renderGrading(targetImageData, recipe, options, skinMask) {
     let g = origG;
     let b = origB;
 
-    // 1. 语义色彩通道直接 1:1 复用 (Direct Channel Reuse: 换色不换光)
+    // 1. 语义色彩通道直接 1:1 复用 (Direct Channel Reuse)
     const [h, s, v] = rgbToHsv(r, g, b);
     let plantWeight = 0;
     if (h >= 35 && h <= 175 && s >= 0.05) {
-      // 核心植被区间 (60°~150°) 达到满归属度 1.0，边缘平滑衰减
       const dist = Math.abs(h - 105);
       if (dist <= 40) {
         plantWeight = 1.0;
@@ -113,16 +122,11 @@ function renderGrading(targetImageData, recipe, options, skinMask) {
       }
 
       if (plantWeight > 0 && greenChannel && greenChannel.present) {
-        // 色相直接复用：高光挂钩参考图高光绿，暗部挂钩参考图暗部绿
         let desiredH = targetGreenHue;
         if (v > 0.65) desiredH = targetGreenHi;
         else if (v < 0.35) desiredH = targetGreenSh;
         const newHue = h * (1 - plantWeight) + desiredH * plantWeight;
-
-        // 饱和度直接 1:1 复用：完全复用参考图的真实低饱和灰度！
         const newSat = s * (1 - plantWeight) + targetGreenSat * plantWeight;
-
-        // 明度质感微调：保持原图层次的同时向高级胶片感微调
         const newVal = v * (1 - plantWeight * 0.1) + targetGreenVal * (plantWeight * 0.1);
 
         const [gr, gg, gb] = hsvToRgb(newHue, newSat, newVal);
@@ -132,12 +136,12 @@ function renderGrading(targetImageData, recipe, options, skinMask) {
       }
     }
 
-    // 2. 白平衡与色调倾向 (White Balance & Tint)
+    // 2. 白平衡与色温
     r += temperature * 1.0;
     b -= temperature * 1.0;
     g += tint * 0.8;
 
-    // 3. 对比度与立体感 (Contrast S-Curve)
+    // 3. 对比度与立体感
     if (contrast !== 1.0) {
       const effContrast = 1.0 + (contrast - 1.0) * (1.0 - plantWeight * 0.5);
       r = (r - 128) * effContrast + 128;
@@ -145,7 +149,26 @@ function renderGrading(targetImageData, recipe, options, skinMask) {
       b = (b - 128) * effContrast + 128;
     }
 
-    // 4. 饱和度调整 (植被区域完全免疫全局过饱和拉爆，彻底锁定复用灰度)
+    // 4. 胶片分位数光影曲线映射 (黑位抬升 Fade & 日系高调透亮)
+    if (fadeBlack > 0) {
+      // 胶片黑位抬升 (Lifted Blacks) —— 赋予暗部特有的乳化层灰雾感
+      const curL = 0.299 * r + 0.587 * g + 0.114 * b;
+      if (curL < 120) {
+        const liftWeight = Math.max(0, 1.0 - curL / 120);
+        r += fadeBlack * liftWeight;
+        g += fadeBlack * liftWeight;
+        b += fadeBlack * liftWeight;
+      }
+    }
+    if (isHighKey) {
+      // 日系高调通透微提
+      const highLift = Math.min(1.0, (0.299 * r + 0.587 * g + 0.114 * b) / 255);
+      r += 18 * highLift;
+      g += 20 * highLift;
+      b += 19 * highLift;
+    }
+
+    // 5. 饱和度 (植被区域免疫全局拉爆)
     if (saturation !== 1.0) {
       const effectiveSat = 1.0 + (saturation - 1.0) * (1.0 - plantWeight);
       const gray = 0.299 * r + 0.587 * g + 0.114 * b;
@@ -154,7 +177,7 @@ function renderGrading(targetImageData, recipe, options, skinMask) {
       b = gray + (b - gray) * effectiveSat;
     }
 
-    // 5. 高光与暗部色调分离注入 (Split Toning，植被满权重处完全不被高光暗部染色污染)
+    // 6. 电影/胶片高光暗部冷暖分离注入 (Split Toning)
     const lum = 0.299 * r + 0.587 * g + 0.114 * b;
     const splitToneShield = 1.0 - plantWeight;
     if (lum > 110) {
@@ -170,24 +193,42 @@ function renderGrading(targetImageData, recipe, options, skinMask) {
       b += shOffset[2] * shWeight * w;
     }
 
-    // 6. 胶片颗粒与暗角质感
+    // 胶片黑位灰雾保底 (确保最低灰阶不受局部色偏染色压死)
+    if (fadeBlack > 0) {
+      const curL = 0.299 * r + 0.587 * g + 0.114 * b;
+      if (curL < 110) {
+        const liftWeight = Math.max(0, 1.0 - curL / 110);
+        const minFloor = fadeBlack * 0.75;
+        r = Math.max(minFloor * liftWeight, r);
+        g = Math.max(minFloor * liftWeight, g);
+        b = Math.max(minFloor * liftWeight, b);
+      }
+    }
+
+    // 7. 明度自适应电影/胶片颗粒合成 (Luminance-aware Grain)
+    // 真实胶片在中间调明显，极高光(>220)和死黑处平滑收敛，防止白墙弄脏
     if (filmGrain > 0) {
-      const noise = ((Math.sin(p * 997.13) * 43758.5453) % 1) * filmGrain * 28;
+      const curL = Math.max(0, Math.min(255, 0.299 * r + 0.587 * g + 0.114 * b));
+      // 高斯拱形明度分布曲线：在 L ≈ 128 处权重为 1.0，L > 220 迅速收敛到 0
+      const grainFactor = Math.sin((curL / 255) * Math.PI) * (curL > 215 ? Math.max(0, (255 - curL) / 40) : 1.0);
+      const noise = ((Math.sin(p * 997.13 + 37.1) * 43758.5453) % 1) * filmGrain * 32 * grainFactor;
       r += noise;
       g += noise;
       b += noise;
     }
+
+    // 8. 镜头暗角
     if (vignette > 0) {
       const px = p % width;
       const py = Math.floor(p / width);
       const dist = Math.hypot(px - cx, py - cy) / maxDist;
-      const vigFactor = 1.0 - Math.pow(dist, 1.8) * vignette * 0.6;
+      const vigFactor = 1.0 - Math.pow(dist, 1.8) * vignette * 0.65;
       r *= vigFactor;
       g *= vigFactor;
       b *= vigFactor;
     }
 
-    // 7. 智能人像肤色保护 (保护人脸红润)
+    // 9. 智能人像肤色保护
     if (protectSkin && skinMask && skinMask[p] > 0.1) {
       const skinW = skinMask[p];
       const origLum = 0.299 * origR + 0.587 * origG + 0.114 * origB;
@@ -202,7 +243,7 @@ function renderGrading(targetImageData, recipe, options, skinMask) {
       b = b * (1 - skinW * 0.75) + skinSafeB * (skinW * 0.75);
     }
 
-    // 8. 全局强度插值混合 (Intensity Lerp)
+    // 10. 全局强度插值混合 (Intensity Lerp)
     const finalR = origR * (1 - intensity) + r * intensity;
     const finalG = origG * (1 - intensity) + g * intensity;
     const finalB = origB * (1 - intensity) + b * intensity;

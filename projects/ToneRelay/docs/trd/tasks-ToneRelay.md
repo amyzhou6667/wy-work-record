@@ -83,4 +83,17 @@
   - **改动范围**：`projects/ToneRelay/src/core/renderer.js`、`projects/ToneRelay/src/ui/engine.js`、`projects/ToneRelay/tests/green_tuning.test.js`
   - **目标**：实现语义色区直复用架构，将待修图绿色通道的色相与饱和度 1:1 替换为参考图绿色，同时 100% 完整保留原图明暗纹理与立体感。
 
+### 阶段六：通用全风格自适应解析与电影/胶片多阶段合成 (Universal Engine)
+- [x] **Task 6.1: 通用全风格解构与迁移 TDD 单元测试套件**
+  - **改动范围**：`projects/ToneRelay/tests/universal_style.test.js`
+  - **目标**：覆盖大面积白色高调胶片风、电影 Teal-Orange 撞色、拉普拉斯高频颗粒度自动检测、明度自适应颗粒与镜头暗角。
+  - **验证命令**：`node --test projects/ToneRelay/tests/universal_style.test.js`
+- [x] **Task 6.2: 通用特征提取器 (Universal Extractor)**
+  - **改动范围**：`projects/ToneRelay/src/core/extractor.js`
+  - **目标**：实现 RGB 转 CIE-Lab 正交空间变换、5 点分位数光影曲线分析、动态分位数色调划分、高频拉普拉斯颗粒感与镜头暗角检测。
+- [x] **Task 6.3: 通用多阶段影调与质感渲染引擎 (Universal Renderer)**
+  - **改动范围**：`projects/ToneRelay/src/core/renderer.js`、`projects/ToneRelay/src/ui/engine.js`
+  - **目标**：实现黑位抬升灰雾感 (Lifted Blacks) 保底、日系高调透亮微提、好莱坞电影冷暖对冲注入、高光无噪明度自适应颗粒合成。
+
+
 

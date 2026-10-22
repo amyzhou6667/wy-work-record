@@ -1,6 +1,7 @@
 /**
- * ToneRelay - 纯前端浏览器端算法引擎 (Browser Bundle - 黄绿联动与灰绿深度压制升级版)
+ * ToneRelay - 纯前端浏览器端算法引擎 (Universal Style & Tone Browser Engine)
  * 零依赖、纯客户端 Canvas / 像素矩阵运算，保障相册隐私
+ * 支持：通用光影分位数曲线 (日系高调白 / 电影暗调)、黑位抬升灰雾、真实颗粒度/暗角自适应反解、电影 Teal-Orange 撞色与人像肤色保护
  */
 
 window.ToneRelayEngine = (function () {
@@ -46,13 +47,33 @@ window.ToneRelayEngine = (function () {
     return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
   }
 
-  // 3. RGB 转 HEX
+  // 3. RGB 转 CIE-L*a*b*
+  function rgbToLab(r, g, b) {
+    let rn = r / 255, gn = g / 255, bn = b / 255;
+    rn = rn > 0.04045 ? Math.pow((rn + 0.055) / 1.055, 2.4) : rn / 12.92;
+    gn = gn > 0.04045 ? Math.pow((gn + 0.055) / 1.055, 2.4) : gn / 12.92;
+    bn = bn > 0.04045 ? Math.pow((bn + 0.055) / 1.055, 2.4) : bn / 12.92;
+
+    let x = (rn * 0.4124564 + gn * 0.3575761 + bn * 0.1804375) / 0.95047;
+    let y = (rn * 0.2126729 + gn * 0.7151522 + bn * 0.0721750) / 1.00000;
+    let z = (rn * 0.0193339 + gn * 0.1191920 + bn * 0.9503041) / 1.08883;
+
+    const f = (t) => t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116;
+    const fx = f(x), fy = f(y), fz = f(z);
+
+    const L = Math.max(0, 116 * fy - 16);
+    const a = 500 * (fx - fy);
+    const bVal = 200 * (fy - fz);
+    return [L, a, bVal];
+  }
+
+  // 4. RGB 转 HEX
   function rgbToHex(r, g, b) {
     const toHex = (n) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0');
     return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
   }
 
-  // 4. 角度环平均值
+  // 5. 角度环平均值
   function averageHue(hueList, weightList) {
     if (hueList.length === 0) return 0;
     let sumX = 0, sumY = 0, totalW = 0;
@@ -69,7 +90,7 @@ window.ToneRelayEngine = (function () {
     return Math.round(deg);
   }
 
-  // 5. 前置门控校验
+  // 6. 前置门控校验
   function validateReferenceImage(imageData) {
     if (!imageData || !imageData.width || !imageData.height || !imageData.data) {
       return { valid: false, reason: '无效的图片数据，请重新选择' };
@@ -112,17 +133,90 @@ window.ToneRelayEngine = (function () {
     return { valid: true };
   }
 
-  // 6. 特征解构与配方提取 (含黄绿联动与自适应灰绿解构)
+  // 7. 自动反解物理颗粒强度
+  function detectFilmGrain(data, width, height) {
+    if (width < 8 || height < 8) return 0.05;
+    const step = Math.max(2, Math.floor(Math.min(width, height) / 32));
+    let noiseSum = 0, validCount = 0;
+
+    for (let y = step; y < height - step; y += step) {
+      for (let x = step; x < width - step; x += step) {
+        const idx = (y * width + x) * 4;
+        const curL = 0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2];
+        const leftIdx = (y * width + (x - 1)) * 4;
+        const rightIdx = (y * width + (x + 1)) * 4;
+        const topIdx = ((y - 1) * width + x) * 4;
+        const bottomIdx = ((y + 1) * width + x) * 4;
+
+        const neighborMean = (
+          (0.299 * data[leftIdx] + 0.587 * data[leftIdx + 1] + 0.114 * data[leftIdx + 2]) +
+          (0.299 * data[rightIdx] + 0.587 * data[rightIdx + 1] + 0.114 * data[rightIdx + 2]) +
+          (0.299 * data[topIdx] + 0.587 * data[topIdx + 1] + 0.114 * data[topIdx + 2]) +
+          (0.299 * data[bottomIdx] + 0.587 * data[bottomIdx + 1] + 0.114 * data[bottomIdx + 2])
+        ) / 4;
+
+        const diff = Math.abs(curL - neighborMean);
+        if (diff > 0.01 && diff < 28) {
+          noiseSum += diff;
+          validCount++;
+        }
+      }
+    }
+
+    if (validCount === 0) return 0.0;
+    const meanNoise = noiseSum / validCount;
+    if (meanNoise <= 0.8) return 0.0;
+    const grainStrength = Math.min(0.5, (meanNoise - 0.8) * 0.045);
+    return +grainStrength.toFixed(2);
+  }
+
+  // 8. 自动反解镜头暗角强度
+  function detectVignette(data, width, height) {
+    const cx = width / 2, cy = height / 2;
+    const maxDist = Math.hypot(cx, cy);
+    let centerLum = 0, centerCount = 0;
+    let edgeLum = 0, edgeCount = 0;
+    const step = Math.max(1, Math.floor((width * height) / 2000));
+
+    for (let i = 0; i < data.length; i += 4 * step) {
+      const p = i / 4;
+      const x = p % width, y = Math.floor(p / width);
+      const dist = Math.hypot(x - cx, y - cy) / maxDist;
+      const lum = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+
+      if (dist <= 0.35) {
+        centerLum += lum;
+        centerCount++;
+      } else if (dist >= 0.75) {
+        edgeLum += lum;
+        edgeCount++;
+      }
+    }
+
+    if (centerCount === 0 || edgeCount === 0) return 0.0;
+    const avgCenter = centerLum / centerCount;
+    const avgEdge = edgeLum / edgeCount;
+
+    if (avgCenter > 40 && avgEdge < avgCenter * 0.90) {
+      const vig = Math.min(0.65, ((avgCenter - avgEdge) / avgCenter) * 1.1);
+      return +vig.toFixed(2);
+    }
+    return 0.0;
+  }
+
+  // 9. 通用参考图全风格解构
   function extractRecipe(imageData) {
     const { width, height, data } = imageData;
     const totalPixels = width * height;
     const step = Math.max(1, Math.floor(totalPixels / 3000));
 
+    const allLums = [];
+    const allLabs = [];
+    const samples = [];
     const highlightHues = [], highlightWeights = [];
     const shadowHues = [], shadowWeights = [];
     let sumHighlightSat = 0, sumShadowSat = 0;
 
-    // 植被/绿色通道专项统计 (扩展至黄绿~正绿~青墨绿: H 38°~175°，放宽门槛至 s >= 0.05 捕获灰绿)
     const greenHues = [], greenWeights = [];
     const greenSats = [];
     let sumGreenSat = 0, sumGreenVal = 0;
@@ -134,27 +228,44 @@ window.ToneRelayEngine = (function () {
       const r = data[i], g = data[i + 1], b = data[i + 2];
       const l = 0.299 * r + 0.587 * g + 0.114 * b;
       const [h, s, v] = rgbToHsv(r, g, b);
+      const lab = rgbToLab(r, g, b);
 
+      allLums.push(l);
+      allLabs.push(lab);
       totalL += l; totalR += r; totalG += g; totalB += b;
       sampleCount++;
+
+      samples.push({ r, g, b, l, h, s, v });
 
       if (sampleCount <= 120) {
         colorSamples.push([r, g, b, l]);
       }
+    }
 
-      // 真正的高光与阴影区分离
-      if (l > 140 && s > 0.05) {
+    // 1. 通用光影 5 节点分位数
+    allLums.sort((a, b) => a - b);
+    const p0 = Math.round(allLums[Math.floor(allLums.length * 0.02)] || 0);
+    const p25 = Math.round(allLums[Math.floor(allLums.length * 0.25)] || 64);
+    const p50 = Math.round(allLums[Math.floor(allLums.length * 0.50)] || 128);
+    const p75 = Math.round(allLums[Math.floor(allLums.length * 0.75)] || 192);
+    const p100 = Math.round(allLums[Math.floor(allLums.length * 0.98)] || 255);
+
+    const hiThreshold = Math.max(125, Math.min(220, Math.round((p50 + p75) / 2)));
+    const shThreshold = Math.min(115, Math.max(40, Math.round((p0 + p25) / 2)));
+
+    for (const item of samples) {
+      const { l, h, s, v } = item;
+      if (l >= hiThreshold && s > 0.04) {
         highlightHues.push(h);
         highlightWeights.push(s * (l / 255));
         sumHighlightSat += s;
       }
-      if (l < 105 && s > 0.05) {
+      if (l <= shThreshold && s > 0.04) {
         shadowHues.push(h);
         shadowWeights.push(s * (1 - l / 255));
         sumShadowSat += s;
       }
 
-      // 专门捕获植被/绿色彩区 (黄绿、草绿、青绿、墨绿及低饱和灰绿)
       if (h >= 38 && h <= 175 && s >= 0.05 && v >= 0.08) {
         greenHues.push(h);
         greenSats.push(s);
@@ -166,18 +277,52 @@ window.ToneRelayEngine = (function () {
       }
     }
 
+    const toneCurve = {
+      p0,
+      p25,
+      p50,
+      p75,
+      p100,
+      fadeBlack: Math.max(0, p0 - 4),
+      isHighKey: p75 >= 210 && p50 >= 150
+    };
+
+    // 2. 通用 CIE-Lab 感知色彩统计
+    let sumLabL = 0, sumLabA = 0, sumLabB = 0;
+    for (const [L, a, b] of allLabs) {
+      sumLabL += L; sumLabA += a; sumLabB += b;
+    }
+    const meanLabL = +(sumLabL / allLabs.length).toFixed(1);
+    const meanLabA = +(sumLabA / allLabs.length).toFixed(1);
+    const meanLabB = +(sumLabB / allLabs.length).toFixed(1);
+
+    const labStats = { meanL: meanLabL, meanA: meanLabA, meanB: meanLabB };
+
+    // 3. 自动反解物理颗粒与暗角
+    const detectedGrain = detectFilmGrain(data, width, height);
+    const detectedVignette = detectVignette(data, width, height);
+
+    // 4. 色调分离与电影 Teal-Orange 判定
     const avgHighlightHue = highlightHues.length > 0 ? averageHue(highlightHues, highlightWeights) : 38;
     const avgShadowHue = shadowHues.length > 0 ? averageHue(shadowHues, shadowWeights) : 210;
-    const avgHighlightSat = highlightHues.length > 0 ? +(sumHighlightSat / highlightHues.length).toFixed(2) : 0.40;
-    const avgShadowSat = shadowHues.length > 0 ? +(sumShadowSat / shadowHues.length).toFixed(2) : 0.40;
+    const avgHighlightSat = highlightHues.length > 0 ? +(sumHighlightSat / highlightHues.length).toFixed(2) : 0.35;
+    const avgShadowSat = shadowHues.length > 0 ? +(sumShadowSat / shadowHues.length).toFixed(2) : 0.35;
+
+    const isCinemaTealOrange = (avgHighlightHue >= 15 && avgHighlightHue <= 70) && (avgShadowHue >= 170 && avgShadowHue <= 245);
+    const cinemaSplit = {
+      isCinemaTealOrange,
+      highlightHue: avgHighlightHue,
+      shadowHue: avgShadowHue,
+      strength: isCinemaTealOrange ? 0.85 : 0.5
+    };
 
     const meanL = totalL / sampleCount;
-    const exposureOffset = +((meanL - 128) / 255).toFixed(2);
+    let exposureOffset = toneCurve.isHighKey ? +((p50 - 128) / 380).toFixed(2) : +((meanL - 128) / 255).toFixed(2);
     const tempRatio = totalR / (totalB || 1);
     const temperature = Math.round((tempRatio - 1.0) * 35);
     const tint = Math.round(((totalG / sampleCount) - ((totalR + totalB) / (sampleCount * 2))) * 0.4);
 
-    // 绿色通道专项解构特征
+    // 5. 绿色通道专项解构
     let greenChannel = null;
     if (greenHues.length >= 8) {
       const avgGHue = averageHue(greenHues, greenWeights);
@@ -188,33 +333,18 @@ window.ToneRelayEngine = (function () {
 
       let styleName = '清新日系绿';
       if (avgGSat <= 0.32) {
-        if (avgGHue >= 125) {
-          styleName = '莫兰迪青冷灰绿';
-        } else if (avgGHue <= 80) {
-          styleName = '复古低饱和橄榄灰绿';
-        } else {
-          styleName = '高级沉稳灰绿';
-        }
+        styleName = avgGHue >= 125 ? '莫兰迪青冷灰绿' : (avgGHue <= 80 ? '复古橄榄灰绿' : '沉稳灰绿');
       } else {
-        if (avgGHue >= 135) {
-          styleName = '复古青冷墨绿';
-        } else if (avgGHue <= 85) {
-          styleName = '胶片复古橄榄绿';
-        } else {
-          styleName = '森系冷杉绿';
-        }
+        styleName = avgGHue >= 135 ? '复古青冷墨绿' : (avgGHue <= 85 ? '胶片橄榄绿' : '森系冷杉绿');
       }
-
-      const shadowHue = Math.min(360, avgGHue + 6);
-      const highlightHue = Math.max(0, avgGHue - 5);
 
       greenChannel = {
         present: true,
         directReuse: true,
         targetHue: avgGHue,
         targetSat: avgGSat,
-        shadowHue,
-        highlightHue,
+        shadowHue: Math.min(360, avgGHue + 6),
+        highlightHue: Math.max(0, avgGHue - 5),
         targetVal: avgGVal,
         styleName
       };
@@ -243,39 +373,41 @@ window.ToneRelayEngine = (function () {
     ];
 
     const tags = [];
-    if (avgHighlightHue >= 15 && avgHighlightHue <= 75) tags.push('暖阳金调高光');
+    if (toneCurve.isHighKey) tags.push('日系高调白胶片', '通透纯净白');
+    else if (p50 < 90) tags.push('低调电影暗调', '深邃光影');
+    else tags.push('自然透亮光影');
+
+    if (isCinemaTealOrange) tags.push('好莱坞电影冷暖撞色', 'Teal-Orange');
+    else if (avgHighlightHue >= 15 && avgHighlightHue <= 75) tags.push('暖阳金调高光');
     else if (avgHighlightHue >= 170 && avgHighlightHue <= 245) tags.push('清冷冰蓝高光');
-    else tags.push('纯净透亮高光');
 
-    if (avgShadowHue >= 165 && avgShadowHue <= 255) tags.push('青冷暗部');
-    else if (avgShadowHue >= 10 && avgShadowHue <= 50) tags.push('复古棕调暗部');
-    else tags.push('胶片沉稳暗部');
-
-    if (greenChannel && greenChannel.present) {
-      tags.push(greenChannel.styleName);
-    }
-
-    tags.push('质感胶片');
+    if (detectedGrain >= 0.15) tags.push('胶片银盐颗粒');
+    if (detectedVignette >= 0.15) tags.push('电影镜头暗角');
+    if (greenChannel && greenChannel.present) tags.push(greenChannel.styleName);
+    tags.push('质感大师');
 
     return {
       id: (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : `recipe_${Date.now()}`,
       createdAt: Date.now(),
       exposureOffset,
-      contrast: 1.2,
-      saturation: 1.15,
+      contrast: 1.15,
+      saturation: 1.1,
       temperature,
       tint,
       highlights: { hue: avgHighlightHue, saturation: avgHighlightSat, weight: 0.75 },
       shadows: { hue: avgShadowHue, saturation: avgShadowSat, weight: 0.75 },
+      toneCurve,
+      labStats,
+      cinemaSplit,
       greenChannel,
-      filmGrain: 0.16,
-      vignette: 0.16,
+      filmGrain: detectedGrain,
+      vignette: detectedVignette,
       tags,
       dominantPalette
     };
   }
 
-  // 7. 人像肤色软蒙版
+  // 10. 人像肤色软蒙版
   function generateSkinMask(imageData) {
     if (!imageData) return new Float32Array(0);
     const { width, height, data } = imageData;
@@ -302,13 +434,13 @@ window.ToneRelayEngine = (function () {
     return mask;
   }
 
-  // 8. 色相投影
+  // 11. 色相投影
   function hueToRgbOffset(hue) {
     const rad = (hue * Math.PI) / 180;
     return [Math.cos(rad), Math.cos(rad - (2 * Math.PI) / 3), Math.cos(rad - (4 * Math.PI) / 3)];
   }
 
-  // 9. 专业影调增强渲染引擎 (含黄绿联动与灰绿深度压制)
+  // 12. 通用多阶段影调渲染引擎
   function renderGrading(ctx, targetImageData, recipe, options, skinMask) {
     const { intensity = 1.0, protectSkin = true } = options || {};
     const { width, height, data: src } = targetImageData;
@@ -322,11 +454,13 @@ window.ToneRelayEngine = (function () {
 
     const {
       contrast = 1.15,
-      saturation = 1.15,
+      saturation = 1.1,
       temperature = 0,
       tint = 0,
       highlights,
       shadows,
+      toneCurve,
+      cinemaSplit,
       greenChannel,
       filmGrain = 0,
       vignette = 0
@@ -334,14 +468,18 @@ window.ToneRelayEngine = (function () {
 
     const hiOffset = highlights ? hueToRgbOffset(highlights.hue) : [0, 0, 0];
     const shOffset = shadows ? hueToRgbOffset(shadows.hue) : [0, 0, 0];
-    const hiWeight = highlights ? Math.max(0.2, highlights.saturation) * (highlights.weight || 0.6) * 110 : 0;
-    const shWeight = shadows ? Math.max(0.2, shadows.saturation) * (shadows.weight || 0.6) * 110 : 0;
+    const isCinema = cinemaSplit && cinemaSplit.isCinemaTealOrange;
+    const hiWeight = highlights ? Math.max(0.2, highlights.saturation) * (highlights.weight || 0.6) * (isCinema ? 130 : 100) : 0;
+    const shWeight = shadows ? Math.max(0.2, shadows.saturation) * (shadows.weight || 0.6) * (isCinema ? 130 : 100) : 0;
 
     const targetGreenHue = greenChannel ? greenChannel.targetHue : 140;
     const targetGreenSat = greenChannel ? greenChannel.targetSat : 0.28;
     const targetGreenVal = greenChannel ? (greenChannel.targetVal || 0.55) : 0.55;
     const targetGreenSh = greenChannel && greenChannel.shadowHue ? greenChannel.shadowHue : (targetGreenHue + 5);
     const targetGreenHi = greenChannel && greenChannel.highlightHue ? greenChannel.highlightHue : (targetGreenHue - 5);
+
+    const fadeBlack = (toneCurve && toneCurve.fadeBlack) ? toneCurve.fadeBlack : 0;
+    const isHighKey = toneCurve ? toneCurve.isHighKey : false;
 
     const cx = width / 2, cy = height / 2;
     const maxDist = Math.hypot(cx, cy);
@@ -352,23 +490,19 @@ window.ToneRelayEngine = (function () {
       const origR = src[idx], origG = src[idx + 1], origB = src[idx + 2], origA = src[idx + 3];
       let r = origR, g = origG, b = origB;
 
-      // 1. 语义色彩通道直接 1:1 复用 (Direct Channel Reuse: 换色不换光)
+      // 1. 语义色彩通道直接 1:1 复用
       const [h, s, v] = rgbToHsv(r, g, b);
       let plantWeight = 0;
       if (h >= 35 && h <= 175 && s >= 0.05) {
         const dist = Math.abs(h - 105);
-        if (dist <= 40) {
-          plantWeight = 1.0;
-        } else {
-          plantWeight = Math.max(0, 1.0 - (dist - 40) / 30);
-        }
+        if (dist <= 40) plantWeight = 1.0;
+        else plantWeight = Math.max(0, 1.0 - (dist - 40) / 30);
 
         if (plantWeight > 0 && greenChannel && greenChannel.present) {
           let desiredH = targetGreenHue;
           if (v > 0.65) desiredH = targetGreenHi;
           else if (v < 0.35) desiredH = targetGreenSh;
           const newHue = h * (1 - plantWeight) + desiredH * plantWeight;
-
           const newSat = s * (1 - plantWeight) + targetGreenSat * plantWeight;
           const newVal = v * (1 - plantWeight * 0.1) + targetGreenVal * (plantWeight * 0.1);
 
@@ -392,7 +526,24 @@ window.ToneRelayEngine = (function () {
         b = (b - 128) * effContrast + 128;
       }
 
-      // 4. 饱和度 (植被区域免疫全局拉爆)
+      // 4. 胶片分位数光影曲线映射 (黑位抬升 Fade & 日系高调透亮)
+      if (fadeBlack > 0) {
+        const curL = 0.299 * r + 0.587 * g + 0.114 * b;
+        if (curL < 120) {
+          const liftWeight = Math.max(0, 1.0 - curL / 120);
+          r += fadeBlack * liftWeight;
+          g += fadeBlack * liftWeight;
+          b += fadeBlack * liftWeight;
+        }
+      }
+      if (isHighKey) {
+        const highLift = Math.min(1.0, (0.299 * r + 0.587 * g + 0.114 * b) / 255);
+        r += 18 * highLift;
+        g += 20 * highLift;
+        b += 19 * highLift;
+      }
+
+      // 5. 饱和度 (植被区域免疫全局拉爆)
       if (saturation !== 1.0) {
         const effectiveSat = 1.0 + (saturation - 1.0) * (1.0 - plantWeight);
         const gray = 0.299 * r + 0.587 * g + 0.114 * b;
@@ -401,7 +552,7 @@ window.ToneRelayEngine = (function () {
         b = gray + (b - gray) * effectiveSat;
       }
 
-      // 5. 高光与阴影色调分离注入 (Split Toning，植被区屏蔽污染)
+      // 6. 电影/胶片高光暗部冷暖分离注入
       const lum = 0.299 * r + 0.587 * g + 0.114 * b;
       const splitToneShield = 1.0 - plantWeight;
       if (lum > 110) {
@@ -417,19 +568,35 @@ window.ToneRelayEngine = (function () {
         b += shOffset[2] * shWeight * w;
       }
 
-      // 6. 胶片颗粒与暗角质感
+      // 胶片黑位灰雾底限保底
+      if (fadeBlack > 0) {
+        const curL = 0.299 * r + 0.587 * g + 0.114 * b;
+        if (curL < 110) {
+          const liftWeight = Math.max(0, 1.0 - curL / 110);
+          const minFloor = fadeBlack * 0.75;
+          r = Math.max(minFloor * liftWeight, r);
+          g = Math.max(minFloor * liftWeight, g);
+          b = Math.max(minFloor * liftWeight, b);
+        }
+      }
+
+      // 7. 明度自适应电影/胶片颗粒合成
       if (filmGrain > 0) {
-        const noise = ((Math.sin(p * 997.13) * 43758.5453) % 1) * filmGrain * 28;
+        const curL = Math.max(0, Math.min(255, 0.299 * r + 0.587 * g + 0.114 * b));
+        const grainFactor = Math.sin((curL / 255) * Math.PI) * (curL > 215 ? Math.max(0, (255 - curL) / 40) : 1.0);
+        const noise = ((Math.sin(p * 997.13 + 37.1) * 43758.5453) % 1) * filmGrain * 32 * grainFactor;
         r += noise; g += noise; b += noise;
       }
+
+      // 8. 镜头暗角
       if (vignette > 0) {
         const px = p % width, py = Math.floor(p / width);
         const dist = Math.hypot(px - cx, py - cy) / maxDist;
-        const vigFactor = 1.0 - Math.pow(dist, 1.8) * vignette * 0.6;
+        const vigFactor = 1.0 - Math.pow(dist, 1.8) * vignette * 0.65;
         r *= vigFactor; g *= vigFactor; b *= vigFactor;
       }
 
-      // 7. 智能人像肤色保护
+      // 9. 智能人像肤色保护
       if (protectSkin && skinMask && skinMask[p] > 0.1) {
         const skinW = skinMask[p];
         const origLum = 0.299 * origR + 0.587 * origG + 0.114 * origB;
@@ -444,7 +611,7 @@ window.ToneRelayEngine = (function () {
         b = b * (1 - skinW * 0.75) + skinSafeB * (skinW * 0.75);
       }
 
-      // 8. 全局强度插值
+      // 10. 全局强度插值
       const finalR = origR * (1 - intensity) + r * intensity;
       const finalG = origG * (1 - intensity) + g * intensity;
       const finalB = origB * (1 - intensity) + b * intensity;
