@@ -43,7 +43,9 @@ erDiagram
 
 ---
 
-## 3. 核心接口与协议规范 (API Contracts)
+## 3. 核心接口与协议规范 (API Contracts & TS Signatures)
+
+> **全局强制 TypeScript 规范**：接口契约必须直接给出 TypeScript `interface` / `type` 定义（方法入参、返回值、异常类型），锁定接口签名。
 
 ### 3.1 接口列表
 | 接口名称 | 方法与路径 | 描述 | 调用方 |
@@ -51,6 +53,16 @@ erDiagram
 | 注册任务会话 | `POST /api/v1/tasks` | CLI 启动时注册 Session | Relay CLI |
 | 上报提问阻断 | `POST /api/v1/tasks/{id}/prompts` | 捕获到输入时上报 | Relay CLI |
 | 下发决策指令 | `POST /api/v1/tasks/{id}/actions` | 手机端确认/中止 | 小程序 |
+
+### 3.2 接口签名与契约代码 (TypeScript Contract)
+```typescript
+export interface ApiResponse<T> {
+  code: number;
+  message: string;
+  data: T;
+}
+```
+
 
 ---
 

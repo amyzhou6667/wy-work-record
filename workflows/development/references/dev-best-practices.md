@@ -31,7 +31,22 @@
 
 ---
 
-## 📝 三、原子文档同步机制 (Atomic Document Sync)
+## 💎 三、全局强制 TypeScript (TS) 规约 (Mandatory TypeScript Policy)
+
+在整个开发工作流与项目生命周期中，严格执行**全链路 TypeScript 强类型化**：
+1. **源码与测试一律 `.ts`**：
+   - 凡涉及 JavaScript/Node.js/前端/脚本工具/CLI 的代码，强制使用 TypeScript (`.ts`)，严禁出现任何业务或测试 `.js` 文件。
+   - 测试文件统一命名为 `*.test.ts`。
+2. **契约与模型强类型先行**：
+   - TRD 方案与接口契约设计阶段，必须使用 TypeScript `interface` / `type` / `enum` 明确字段类型、可选性与结构，严禁使用宽松的动态类型或 `any` 滥用。
+3. **运行时与脚手架固定 TS 链路**：
+   - 项目启动（如 CLI 命令、本地 Web 服务、后台伴侣）以及测试执行（如 `node --test tests/*.test.ts`、`tsx`），必须采用具备原生或即时 TS 支持的指令，严禁退化为原生 `node xxx.js`。
+   - 每个项目必须具备标准 `tsconfig.json` 配置。
+
+---
+
+## 📝 四、原子文档同步机制 (Atomic Document Sync)
+
 
 - **核心原则**：**文档与代码的同步必须在同一个 Git Commit 中完成**。
 - **反模式警示**：历史教训表明，“先提代码、事后补文档”的失误率高达 100%，必然导致架构文档与实际代码脱节。
@@ -43,7 +58,7 @@
 
 ---
 
-## 🔍 四、系统化调试五步法 (Systematic Debugging)
+## 🔍 五、系统化调试五步法 (Systematic Debugging)
 
 遇到测试失败、运行时异常或线上 Bug 时，**严禁盲目试错或随意打补丁**，必须严格执行五步排查：
 
@@ -63,7 +78,7 @@ flowchart TD
 
 ---
 
-## ✅ 五、完成前三维交付验证清单 (Verify Gate)
+## ✅ 六、完成前三维交付验证清单 (Verify Gate)
 
 在声称任务“已完成/已修复/可交付”前，必须提供以下三维证据支撑，不得凭主观臆断：
 

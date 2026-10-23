@@ -1,0 +1,22 @@
+{
+  "name": "agent-relay",
+  "version": "1.0.0",
+  "description": "AgentRelay - 远程 AI 任务伴侣 (TypeScript)",
+  "type": "module",
+  "bin": {
+    "agent-relay": "./src/cli.ts"
+  },
+  "scripts": {
+    "start": "node src/cli.ts",
+    "watch": "node src/cli.ts watch",
+    "test": "node --test tests/*.test.ts"
+  },
+  "keywords": [
+    "agent",
+    "relay",
+    "claude-code",
+    "typescript"
+  ],
+  "author": "",
+  "license": "ISC"
+}

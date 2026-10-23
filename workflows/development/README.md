@@ -36,8 +36,13 @@ flowchart TD
 - **文档同步与 `git commit` 是同一个原子动作，不是两个独立步骤**。
 - 凡引入新模块、改接口契约、改数据模型或改业务行为，必须与代码在**同一个 commit** 中提交。
 
-### 4. 系统化调试 (Systematic Debugging)
+### 4. 全局强制 TypeScript (TS) 规约
+- 凡涉及 JavaScript/Node.js/前端/脚本/CLI/微任务实现的内容，**强制固定为 TypeScript (`.ts`)**，严禁使用 `.js`。
+- 项目启动（CLI/服务）及全量测试必须通过 TS 链路执行（Node 22.6+ 原生 TS 或 tsx 等），接口契约必须直接用 TypeScript `interface` / `type` 定义。
+
+### 5. 系统化调试 (Systematic Debugging)
 - 遇 Bug 严禁盲目打补丁，按 `复现 ➡️ 至少 2 个假设 ➡️ 最小实验 ➡️ 定位根因 ➡️ 编写回归测试修复` 标准推进。
+
 
 ---
 

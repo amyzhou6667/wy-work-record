@@ -32,5 +32,13 @@ ToneRelay/
 - **研发微任务清单 (Tasks)**：[tasks-ToneRelay.md](./docs/trd/tasks-ToneRelay.md)
 - **全量测试验收命令**：
   ```bash
-  node --test projects/ToneRelay/tests/*.test.js
+  node --test projects/ToneRelay/tests/*.test.ts
+  ```
+- **启动 H5 原型服务命令**：
+  ```bash
+  # 方式 1: 直接启动 TypeScript 伺服器
+  node projects/ToneRelay/serve.ts
+
+  # 方式 2: npm 脚本
+  cd projects/ToneRelay && npm start
   ```

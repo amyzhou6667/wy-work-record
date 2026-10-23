@@ -19,10 +19,15 @@
 当用户输入 `/dev-flow <PRD路径或项目名>`，或指示“根据 PRD 进行开发”时：
 - 严格遵循 `workflows/development/` 下的工程闭环自动推进：
   1. **环境预检与风险门控**：检查工作区与安全合规；
-  2. **TRD 方案设计与接口契约先行**：产出 TRD 至 `projects/<项目名称>/docs/trd/TRD-<项目名称>.md`，锁定接口签名契约；
+  2. **TRD 方案设计与接口契约先行**：产出 TRD 至 `projects/<项目名称>/docs/trd/TRD-<项目名称>.md`，**强制使用 TypeScript 声明接口契约与数据模型**；
   3. **微任务拆解**：产出任务清单至 `projects/<项目名称>/docs/trd/tasks-<项目名称>.md`；
-  4. **上下文隔离 TDD 编码**：在 `projects/<项目名称>/src/` 编写代码，坚持测试先行（Red）与开发隔离（Green）；
-  5. **0 失败门禁与原子文档提交**：测试 100% 通过，文档与代码在同一个 Commit 提交。
+  4. **全局强制 TypeScript (TS) 规约**：
+     - **凡涉及 JavaScript/Node.js/前端/脚本/CLI 的内容，强制且固定采用 TypeScript (.ts)**，严禁新建或回退为 JavaScript (.js)；
+     - 启动项目与执行脚本一律使用 TS 运行时指令（如 Node 22.6+ 原生 TS 支持、tsx 等），测试命令一律为 `*.test.ts`；
+  5. **上下文隔离 TDD 编码**：在 `projects/<项目名称>/src/` 编写 TypeScript 代码，坚持测试先行（Red）与开发隔离（Green）；
+  6. **0 失败门禁与原子文档提交**：测试 100% 通过，文档与代码在同一个 Commit 提交。
 
 ### 3. 项目库归档规范
 所有项目均独立保存在 `projects/<项目名称>/` 目录下，包含独立的 README、docs（prd/trd）与 src 目录。
+- **技术栈固化**：所有项目凡使用 JS 生态的，源码（`src/`）、测试（`tests/`）、辅助脚本及入口统一固定为 TypeScript (`.ts`)，必须配置标准 `tsconfig.json`。
+

@@ -16,10 +16,10 @@
 
 ## 🏃 快速启动指南
  
--### 1. 伴侣监听模式 (推荐！零侵扰、不改变任何原生窗口)
+### 1. 伴侣监听模式 (推荐！零侵扰、不改变任何原生窗口)
 如果您已经在 **codemaker** 或终端中运行了 Claude Code（如正在跑 `/auto-dev ...`），直接在旁边开启守望伴侣：
 ```powershell
-node projects/AgentRelay/src/cli.js watch "D:\hyper-v\share\proj\opendeck" --public-url http://5ba752e9.r6.cpolar.cn
+node projects/AgentRelay/src/cli.ts watch "D:\hyper-v\share\proj\opendeck" --public-url http://5ba752e9.r6.cpolar.cn
 ```
 - **电脑端**：继续在原生 codemaker 窗口聊、看全彩高亮日志；
 - **手机端**：浏览器/微信打开终端输出的链接，实时监控终端日志流；
@@ -28,7 +28,12 @@ node projects/AgentRelay/src/cli.js watch "D:\hyper-v\share\proj\opendeck" --pub
 ### 2. 托管执行模式 (可选)
 如果希望由 AgentRelay 统一托管拉起任务：
 ```powershell
-node projects/AgentRelay/src/cli.js run "claude" --cwd "D:\hyper-v\share\proj\opendeck" --public-url http://5ba752e9.r6.cpolar.cn
+node projects/AgentRelay/src/cli.ts run "claude" --cwd "D:\hyper-v\share\proj\opendeck" --public-url http://5ba752e9.r6.cpolar.cn
+```
+
+### 3. 全量自动化测试 (TypeScript)
+```powershell
+node --test projects/AgentRelay/tests/*.test.ts
 ```
 
 ---
@@ -38,5 +43,6 @@ node projects/AgentRelay/src/cli.js run "claude" --cwd "D:\hyper-v\share\proj\op
 - [产品需求文档 (PRD)](./docs/prd/PRD-AgentRelay-远程AI任务伴侣.md)：完整三轮 Superpower 对齐产出的工业级 PRD。
 - [技术方案设计 (TRD)](./docs/trd/TRD-AgentRelay-技术架构方案.md)：包含领域模型、接口签名契约与双向通信机制。
 - [微任务拆解与测试计划 (Tasks)](./docs/trd/tasks-AgentRelay.md)：原子任务清单。
-- 源代码目录：`src/`
-- 测试用例目录：`tests/`
+- 源代码目录：`src/`（全量 TypeScript 实现）
+- 测试用例目录：`tests/`（100% TS 覆盖与 0 失败门禁）
+

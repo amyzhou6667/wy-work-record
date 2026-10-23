@@ -15,13 +15,17 @@ description: >-
    - 检查 Git 状态、测试基线、依赖环境（参考 `workflows/development/environment-precheck.md`）。
    - 识别操作风险等级，破坏性操作需经确认并提供降级方案（参考 `workflows/development/risk-gate.md`）。
 2. **TRD 架构设计与接口契约先行**：
-   - 优先产出**接口签名契约**（方法名、入参、出参、异常、实体结构），编写 TRD（参考 `workflows/development/templates/trd-template.md`）。
-3. **上下文隔离开发 (Context Isolation)**：
-   - **Code-Dev 角色**：基于接口契约与验收标准实现代码，**严禁偷读测试实现代码**。
-   - **TDD 角色**：基于接口契约编写测试用例，**严禁篡改业务源码**。
-4. **系统化调试排查**：
+   - 优先产出**接口签名契约**（方法名、入参、出参、异常、实体结构），编写 TRD（参考 `workflows/development/templates/trd-template.md`）。**凡涉及 JS 生态的组件与模型，强制使用 TypeScript Interface / Type 严格声明**。
+3. **全局强制 TypeScript (TS) 规约**：
+   - 任何涉及 Node.js、浏览器前端、脚本工具、CLI 与测试代码，**强制固定为 TypeScript (`.ts`)，严禁使用 JavaScript (`.js`)**。
+   - 启动项目、本地调试、自动化测试一律使用原生 TS 执行命令（如 Node 22.6+ 原生 TS 支持或 tsx），测试用例一律命名为 `*.test.ts`。
+4. **上下文隔离开发 (Context Isolation)**：
+   - **Code-Dev 角色**：基于 TS 接口契约与验收标准实现代码，**严禁偷读测试实现代码**。
+   - **TDD 角色**：基于 TS 接口契约编写测试用例，**严禁篡改业务源码**。
+5. **系统化调试排查**：
    - 遇到 Bug 按五步走：复现 ➡️ 至少 2 个假设 ➡️ 最小验证实验 ➡️ 锁定根因 ➡️ 编写回归测试修复。
-5. **零容忍测试门禁 (0 Failures)**：
+6. **零容忍测试门禁 (0 Failures)**：
    - 0 失败 = 通过，>0 失败 = 不通过。严禁带着旧失败提交代码。
-6. **原子文档同步与提交**：
+7. **原子文档同步与提交**：
    - 凡新增类/模块、改接口、改模型、改功能边界，必须在**同一个 Git Commit** 中同时提交代码与更新后的文档（参考 `workflows/development/doc-sync.md`）。
+

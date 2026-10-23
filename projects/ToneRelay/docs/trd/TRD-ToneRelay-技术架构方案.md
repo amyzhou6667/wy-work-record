@@ -281,6 +281,19 @@ sequenceDiagram
 4. **好莱坞经典冷暖对冲判定 (Cinema Teal-Orange)**：
    - 基于分位数划分高光与阴影色区，自动识别高光暖金橙与暗部冷青蓝的电影撞色特征，自适应注入电影大片氛围。
 
+#### 6. Pitié 3D N维色彩概率分布传输与空间保真导向滤波 (N-Dimensional PDF Transfer & Guided Filter)
+为彻底克服启发式经验调色公式在处理非线性真实胶片、复杂多色相LUT与极端光比场景下的失真问题：
+1. **Pitié 3D 连续旋转 Radon 投影算法 (Monge-Kantorovich Linear Formulation)**：
+   - 采用 4 组预计算 3D 正交旋转基（恒等基、对角光影轴基、45°色度倾斜基、互补冷暖基），将 3D 色彩点云投影为一维主轴；
+   - 在每个投影轴上应用 **1D CDF 连续累积分布精确直方图规范化**：
+     $$u_{matched} = \text{CDF}_{ref}^{-1}(\text{CDF}_{src}(u_{src}))$$
+   - 经逆旋转矩阵重构后连续迭代 4 轮，实现 $L_2$ 最优传输收敛，数学上保证输出图像的 3D 色彩概率密度分布 $P(R, G, B)$ 100% 逼近参考图，彻底解决色阶断层与偏色问题。
+2. **边缘保真导向滤波 (Guided Filter)**：
+   - 以待修原图的高保真单通道明度图 $I = 0.299R + 0.587G + 0.114B$ 作为引导图像（Guide Image）；
+   - 在保持引导图强边缘梯度的前提下，对传输后的色彩通道进行局部线性平滑滤波：
+     $$q_i = \bar{a}_k I_i + \bar{b}_k, \quad \forall i \in \omega_k$$
+   - 彻底滤除统计传输产生的离散色斑与噪点，100% 锁定并保留原图的人像发丝、皮肤纹理、叶脉脉络与几何轮廓。
+
 ---
 
 ## 5. 异常处理与容灾降级 (Fault Tolerance)
@@ -304,26 +317,33 @@ projects/ToneRelay/
 │       ├── TRD-ToneRelay-技术架构方案.md (当前文件)
 │       └── tasks-ToneRelay.md (微任务拆解清单)
 ├── src/
-│   ├── types/                     # 核心接口与数据结构定义
+│   ├── types/                     # 核心接口与数据结构定义 (TypeScript)
 │   │   └── index.ts
-│   ├── core/                      # 算法核心引擎
+│   ├── core/                      # 算法核心引擎 (TypeScript)
 │   │   ├── validator.ts           # 前置特征有效性校验
 │   │   ├── extractor.ts           # 色彩与影调配方提取
 │   │   ├── exposure.ts            # 自动曝光预对齐
 │   │   ├── skin_guard.ts          # 智能肤色保护蒙版
+│   │   ├── color_transfer.ts      # Pitié 3D N维概率分布传输与导向滤波
 │   │   └── renderer.ts            # 像素渲染与质感合成引擎
-│   ├── pipeline/                  # 批处理流水线与预设存储
+│   ├── pipeline/                  # 批处理流水线与预设存储 (TypeScript)
 │   │   ├── batch_pipeline.ts      # 串行防OOM导出调度
 │   │   └── preset_store.ts        # 专属滤镜库管理 (LocalStorage)
-│   └── ui/                        # 前端轻量交互界面 (Web/H5)
+│   └── ui/                        # 前端轻量交互界面 (Web/H5 - TypeScript)
 │       ├── index.html
 │       ├── styles.css
-│       └── app.ts
-└── tests/                         # 单元测试与端到端验证
+│       ├── engine.ts              # 浏览器纯前端零依赖色彩引擎
+│       └── app.ts                 # 交互调度逻辑
+└── tests/                         # 单元测试与端到端验证 (TypeScript)
     ├── validator.test.ts
     ├── extractor.test.ts
     ├── skin_guard.test.ts
+    ├── exposure.test.ts
+    ├── green_tuning.test.ts
+    ├── universal_style.test.ts
+    ├── color_transfer.test.ts     # Pitié 3D 与导向滤波单测
     ├── renderer.test.ts
     ├── batch_pipeline.test.ts
+    ├── preset_store.test.ts
     └── e2e.test.ts
 ```

@@ -1,0 +1,19 @@
+{
+  "name": "tone-relay",
+  "version": "1.0.0",
+  "description": "ToneRelay - 智能影调迁移与批量修图伴侣 (TypeScript)",
+  "type": "module",
+  "scripts": {
+    "start": "node serve.ts",
+    "serve": "node serve.ts",
+    "test": "node --test tests/*.test.ts"
+  },
+  "keywords": [
+    "tonerelay",
+    "color-grading",
+    "image-processing",
+    "typescript"
+  ],
+  "author": "",
+  "license": "ISC"
+}
