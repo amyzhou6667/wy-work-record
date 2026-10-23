@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { renderGrading } from '../src/core/renderer.ts';
 import { extractRecipe } from '../src/core/extractor.ts';
 import { generateSkinMask } from '../src/core/skin_guard.ts';
-import { createPortraitImage, createGradientImage } from './helpers/image_mock.ts';
+import { createPortraitImage, createGradientImage, createMockImageData } from './helpers/image_mock.ts';
 
 test('GradingRenderer: intensity = 0.0 时输出应与原图完全一致', () => {
   const target = createGradientImage(20, 20);
@@ -97,4 +97,51 @@ test('GradingRenderer: 提供 referenceImageData 时应成功集成 Pitié 3D �
     'Pitié 3D 色彩传输后图像像素色彩应显著融合参考图分布'
   );
 });
+
+test('GradingRenderer: 原图中的纯白/高光中性区域应受到严密保护，不受浓绿参考图染色或泛绿', () => {
+  const mixedImg = createMockImageData(2, 1, (x) => {
+    return x === 0 ? [250, 250, 250, 255] : [50, 210, 30, 255];
+  });
+
+  const strongGreenRecipe: any = {
+    id: 'strong_green',
+    exposureOffset: 0,
+    contrast: 1.1,
+    saturation: 1.1,
+    temperature: 0,
+    tint: 25,
+    highlights: { hue: 140, saturation: 0.5, weight: 0.8 },
+    shadows: { hue: 150, saturation: 0.6, weight: 0.8 },
+    greenChannel: {
+      present: true,
+      directReuse: true,
+      targetHue: 135,
+      targetSat: 0.25,
+      shadowHue: 140,
+      highlightHue: 130,
+      targetVal: 0.55,
+      styleName: '胶片复古绿'
+    },
+    toneCurve: { p0: 0, p25: 64, p50: 128, p75: 192, p100: 255, fadeBlack: 0, isHighKey: false },
+    filmGrain: 0,
+    vignette: 0,
+    tags: ['浓郁绿'],
+    dominantPalette: ['#104020', '#206030', '#0a2010']
+  };
+
+  const rendered = renderGrading(mixedImg, strongGreenRecipe, { intensity: 1.0, protectSkin: true });
+
+  const whitePixelR = rendered.data[0];
+  const whitePixelG = rendered.data[1];
+  const whitePixelB = rendered.data[2];
+
+  assert.ok(whitePixelR >= 240, `白区域红色分量应保持高位，实际: ${whitePixelR}`);
+  assert.ok(whitePixelG >= 240, `白区域绿色分量应保持高位，实际: ${whitePixelG}`);
+  assert.ok(whitePixelB >= 240, `白区域蓝色分量应保持高位，实际: ${whitePixelB}`);
+  assert.ok(
+    Math.abs(whitePixelG - whitePixelR) <= 3,
+    `白区域严禁被染绿：G (${whitePixelG}) 与 R (${whitePixelR}) 差异应 <= 3`
+  );
+});
+
 

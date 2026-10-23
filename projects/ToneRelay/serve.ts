@@ -28,7 +28,23 @@ const MIME_TYPES: Record<string, string> = {
   '.svg': 'image/svg+xml'
 };
 
+const LOG_PATH = path.join(__dirname, 'server.log');
+function logMessage(...args: any[]) {
+  const msg = `[${new Date().toISOString()}] ${args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ')}`;
+  try {
+    fs.appendFileSync(LOG_PATH, msg + '\n');
+  } catch {}
+  console.log(...args);
+}
+
 const server = http.createServer((req, res) => {
+  req.on('error', (err) => {
+    logMessage('⚠️ Request error:', err.message);
+  });
+  res.on('error', (err) => {
+    logMessage('⚠️ Response error:', err.message);
+  });
+
   let reqPath = (req.url || '/').split('?')[0];
   if (reqPath === '/' || reqPath === '') {
     reqPath = '/index.html';
@@ -72,16 +88,21 @@ const server = http.createServer((req, res) => {
         } else {
           body = rawTs.replace(/:\s*[A-Za-z0-9_<>\[\]|&]+/g, '');
         }
-      } catch (stripErr) {
+      } catch (stripErr: any) {
+        logMessage('⚠️ stripTypeScriptTypes error for ' + reqPath + ':', stripErr?.message);
         body = content.toString('utf8');
       }
     }
 
-    res.writeHead(200, {
-      'Content-Type': contentType,
-      'Cache-Control': 'no-cache, no-store, must-revalidate'
-    });
-    res.end(body);
+    try {
+      res.writeHead(200, {
+        'Content-Type': contentType,
+        'Cache-Control': 'no-cache, no-store, must-revalidate'
+      });
+      res.end(body);
+    } catch (sendErr: any) {
+      logMessage('⚠️ Error sending response for ' + reqPath + ':', sendErr?.message);
+    }
   });
 });
 
@@ -101,14 +122,33 @@ function getLocalIPs(): string[] {
   return ips;
 }
 
+server.on('error', (err: any) => {
+  logMessage('❌ Server error:', err.message, err.stack);
+});
+
+process.on('uncaughtException', (err) => {
+  logMessage('❌ Uncaught exception:', err.message, err.stack);
+});
+
+process.on('unhandledRejection', (reason: any) => {
+  logMessage('❌ Unhandled rejection:', reason);
+});
+
+process.on('exit', (code) => {
+  logMessage('ℹ️ Process exiting with code:', code);
+});
+
+// 定时保活心跳，保持事件循环持续活跃防止 Windows 子进程空闲退出
+setInterval(() => {}, 30000);
+
 server.listen(PORT, '0.0.0.0', () => {
   const ips = getLocalIPs();
-  console.log('='.repeat(55));
-  console.log('🎨 ToneRelay 本地静态体验服务已成功启动 (TypeScript 引擎)！');
-  console.log(`💻 本机电脑访问地址: http://localhost:${PORT}`);
+  logMessage('=======================================================');
+  logMessage('🎨 ToneRelay 本地静态体验服务已成功启动 (TypeScript 引擎)！');
+  logMessage(`💻 本机电脑访问地址: http://localhost:${PORT}`);
   if (ips.length > 0) {
-    console.log(`📱 手机/局域网设备访问地址:`);
-    ips.forEach(ip => console.log(`   👉 http://${ip}:${PORT}`));
+    logMessage(`📱 手机/局域网设备访问地址:`);
+    ips.forEach(ip => logMessage(`   👉 http://${ip}:${PORT}`));
   }
-  console.log('='.repeat(55));
+  logMessage('=======================================================');
 });

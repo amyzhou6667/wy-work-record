@@ -279,7 +279,28 @@ export function pitiColorTransfer(
     srcB = guidedFilter(srcB, guideL, sW, sH, radius, eps);
   }
 
-  // 5. 生成输出图像
+  // 5. 高光白与中性灰防染色保护 (White & Neutral Highlight Guard)
+  // 杜绝参考图的非中性色(如浓绿)对原图纯白天空、白墙、白衣产生串色污染
+  for (let i = 0; i < totalSrc; i++) {
+    const idx = i * 4;
+    const oR = sData[idx] ?? 0;
+    const oG = sData[idx + 1] ?? 0;
+    const oB = sData[idx + 2] ?? 0;
+    const oLum = 0.299 * oR + 0.587 * oG + 0.114 * oB;
+    if (oLum > 155) {
+      const maxC = Math.max(oR, oG, oB);
+      const minC = Math.min(oR, oG, oB);
+      const sat = maxC === 0 ? 0 : (maxC - minC) / maxC;
+      if (sat < 0.22) {
+        const wWeight = Math.min(1.0, (oLum - 155) / 75) * Math.max(0.0, 1.0 - sat / 0.22);
+        srcR[i] = (srcR[i] ?? 0) * (1 - wWeight) + oR * wWeight;
+        srcG[i] = (srcG[i] ?? 0) * (1 - wWeight) + oG * wWeight;
+        srcB[i] = (srcB[i] ?? 0) * (1 - wWeight) + oB * wWeight;
+      }
+    }
+  }
+
+  // 6. 生成输出图像
   const OutputClass = (srcImageData as any).constructor || MockImageData;
   const result: ImageDataLike = new OutputClass(sW, sH);
   const dst = result.data;

@@ -227,9 +227,12 @@ export function extractRecipe(imageData: ImageDataLike): StyleRecipe {
   for (const item of samples) {
     const { l, h, s, v } = item;
     if (l >= hiThreshold && s > 0.04) {
-      highlightHues.push(h);
-      highlightWeights.push(s * (l / 255));
-      sumHighlightSat += s;
+      // 排除绿色植被 (70°~165°) 作为高光色相：植物是物体色，不能作为全图光影高光染色基准，防止高光白被染绿
+      if (h < 70 || h > 165) {
+        highlightHues.push(h);
+        highlightWeights.push(s * (l / 255));
+        sumHighlightSat += s;
+      }
     }
     if (l <= shThreshold && s > 0.04) {
       shadowHues.push(h);

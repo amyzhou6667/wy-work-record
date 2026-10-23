@@ -123,24 +123,42 @@ export function renderGrading(
     let g = baseSourceData[idx + 1] ?? origG;
     let b = baseSourceData[idx + 2] ?? origB;
 
+    // 计算原图的基础色彩属性 (用于语义识别与纯白防污染)
+    const [origH, origS, origV] = rgbToHsv(origR, origG, origB);
+    const origLum = 0.299 * origR + 0.587 * origG + 0.114 * origB;
+
+    // 高光白与中性灰防染色保护权重 (White & Neutral Highlight Guard)
+    let whiteWeight = 0.0;
+    if (origLum > 155) {
+      const maxC = Math.max(origR, origG, origB);
+      const minC = Math.min(origR, origG, origB);
+      const sat = maxC === 0 ? 0 : (maxC - minC) / maxC;
+      if (sat < 0.22) {
+        const lumFactor = Math.min(1.0, (origLum - 155) / 75);
+        const satFactor = Math.max(0.0, 1.0 - sat / 0.22);
+        whiteWeight = lumFactor * satFactor;
+      }
+    }
+
     // 1. 语义色彩通道直接 1:1 复用 (Direct Channel Reuse)
-    const [h, s, v] = rgbToHsv(r, g, b);
+    // 严格基于原图像素判定是否为植被，杜绝纯白高光/天空/衣服被误判为植被染绿
     let plantWeight = 0;
-    if (h >= 35 && h <= 175 && s >= 0.05) {
-      const dist = Math.abs(h - 105);
+    if (whiteWeight < 0.5 && origH >= 35 && origH <= 175 && origS >= 0.06) {
+      const dist = Math.abs(origH - 105);
       if (dist <= 40) {
         plantWeight = 1.0;
       } else {
         plantWeight = Math.max(0, 1.0 - (dist - 40) / 30);
       }
+      plantWeight *= (1.0 - whiteWeight);
 
       if (plantWeight > 0 && greenChannel && (greenChannel as any).present) {
         let desiredH = targetGreenHue;
-        if (v > 0.65) desiredH = targetGreenHi;
-        else if (v < 0.35) desiredH = targetGreenSh;
-        const newHue = h * (1 - plantWeight) + desiredH * plantWeight;
-        const newSat = s * (1 - plantWeight) + targetGreenSat * plantWeight;
-        const newVal = v * (1 - plantWeight * 0.1) + targetGreenVal * (plantWeight * 0.1);
+        if (origV > 0.65) desiredH = targetGreenHi;
+        else if (origV < 0.35) desiredH = targetGreenSh;
+        const newHue = origH * (1 - plantWeight) + desiredH * plantWeight;
+        const newSat = origS * (1 - plantWeight) + targetGreenSat * plantWeight;
+        const newVal = origV * (1 - plantWeight * 0.1) + targetGreenVal * (plantWeight * 0.1);
 
         const [gr, gg, gb] = hsvToRgb(newHue, newSat, newVal);
         r = r * (1 - plantWeight) + gr * plantWeight;
@@ -149,10 +167,10 @@ export function renderGrading(
       }
     }
 
-    // 2. 白平衡与色温
-    r += temperature * 1.0;
-    b -= temperature * 1.0;
-    g += tint * 0.8;
+    // 2. 白平衡与色温 (高光纯白区域免疫色偏)
+    r += temperature * 1.0 * (1 - whiteWeight * 0.7);
+    b -= temperature * 1.0 * (1 - whiteWeight * 0.7);
+    g += tint * 0.8 * (1 - whiteWeight);
 
     // 3. 对比度与立体感
     if (contrast !== 1.0) {
@@ -179,18 +197,18 @@ export function renderGrading(
       b += 19 * highLift;
     }
 
-    // 5. 饱和度 (植被区域免疫全局拉爆)
+    // 5. 饱和度 (植被区域与高光白免疫全局拉爆)
     if (saturation !== 1.0) {
-      const effectiveSat = 1.0 + (saturation - 1.0) * (1.0 - plantWeight);
+      const effectiveSat = 1.0 + (saturation - 1.0) * (1.0 - plantWeight) * (1.0 - whiteWeight);
       const gray = 0.299 * r + 0.587 * g + 0.114 * b;
       r = gray + (r - gray) * effectiveSat;
       g = gray + (g - gray) * effectiveSat;
       b = gray + (b - gray) * effectiveSat;
     }
 
-    // 6. 电影/胶片高光暗部冷暖分离注入 (Split Toning)
+    // 6. 电影/胶片高光暗部冷暖分离注入 (Split Toning，高光白保护)
     const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-    const splitToneShield = 1.0 - plantWeight;
+    const splitToneShield = (1.0 - plantWeight) * (1.0 - whiteWeight);
     if (lum > 110) {
       const w = Math.min(1.0, (lum - 110) / 120) * splitToneShield;
       r += hiOffset[0] * hiWeight * w;
@@ -250,6 +268,14 @@ export function renderGrading(
       r = r * (1 - skinW * 0.75) + skinSafeR * (skinW * 0.75);
       g = g * (1 - skinW * 0.75) + skinSafeG * (skinW * 0.75);
       b = b * (1 - skinW * 0.75) + skinSafeB * (skinW * 0.75);
+    }
+
+    // 9.5 高光纯白与中性灰复原 (White Highlight Guard Recovery)
+    // 杜绝任何多阶段调色引起的泛绿或偏色，确保白色背景、天空、衣服保持洁净
+    if (whiteWeight > 0) {
+      r = r * (1 - whiteWeight) + origR * whiteWeight;
+      g = g * (1 - whiteWeight) + origG * whiteWeight;
+      b = b * (1 - whiteWeight) + origB * whiteWeight;
     }
 
     // 10. 全局强度插值混合 (Intensity Lerp)

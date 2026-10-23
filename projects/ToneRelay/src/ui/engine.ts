@@ -261,9 +261,12 @@ export interface ToneEngineInterface {
     for (const item of samples) {
       const { l, h, s, v } = item;
       if (l >= hiThreshold && s > 0.04) {
-        highlightHues.push(h);
-        highlightWeights.push(s * (l / 255));
-        sumHighlightSat += s;
+        // 排除绿色植被 (70°~165°) 作为高光色相：植物是物体色，不能作为全图光影高光染色基准，防止高光白被染绿
+        if (h < 70 || h > 165) {
+          highlightHues.push(h);
+          highlightWeights.push(s * (l / 255));
+          sumHighlightSat += s;
+        }
       }
       if (l <= shThreshold && s > 0.04) {
         shadowHues.push(h);
@@ -691,6 +694,27 @@ export interface ToneEngineInterface {
       srcB = guidedFilter(srcB, guideL, sW, sH, radius, eps);
     }
 
+    // 高光白与中性灰防染色保护 (White & Neutral Highlight Guard)
+    // 杜绝参考图的非中性色(如浓绿)对原图纯白天空、白墙、白衣产生串色污染
+    for (let i = 0; i < totalSrc; i++) {
+      const idx = i * 4;
+      const oR = sData[idx] ?? 0;
+      const oG = sData[idx + 1] ?? 0;
+      const oB = sData[idx + 2] ?? 0;
+      const oLum = 0.299 * oR + 0.587 * oG + 0.114 * oB;
+      if (oLum > 155) {
+        const maxC = Math.max(oR, oG, oB);
+        const minC = Math.min(oR, oG, oB);
+        const sat = maxC === 0 ? 0 : (maxC - minC) / maxC;
+        if (sat < 0.22) {
+          const wWeight = Math.min(1.0, (oLum - 155) / 75) * Math.max(0.0, 1.0 - sat / 0.22);
+          srcR[i] = (srcR[i] ?? 0) * (1 - wWeight) + oR * wWeight;
+          srcG[i] = (srcG[i] ?? 0) * (1 - wWeight) + oG * wWeight;
+          srcB[i] = (srcB[i] ?? 0) * (1 - wWeight) + oB * wWeight;
+        }
+      }
+    }
+
     const result = createImageDataHelper(sW, sH);
     const dst = result.data;
     for (let i = 0; i < totalSrc; i++) {
@@ -767,21 +791,42 @@ export interface ToneEngineInterface {
       const origR = src[idx], origG = src[idx + 1], origB = src[idx + 2], origA = src[idx + 3];
       let r = baseSourceData[idx], g = baseSourceData[idx + 1], b = baseSourceData[idx + 2];
 
-      // 1. 植被通道 1:1 直接复用
-      const [h, s, v] = rgbToHsv(r, g, b);
+      // 计算原图的基础色彩属性 (用于语义识别与纯白防污染)
+      const [origH, origS, origV] = rgbToHsv(origR, origG, origB);
+      const origLum = 0.299 * origR + 0.587 * origG + 0.114 * origB;
+
+      // 高光白与中性灰防染色保护权重 (White & Neutral Highlight Guard)
+      let whiteWeight = 0.0;
+      if (origLum > 155) {
+        const maxC = Math.max(origR, origG, origB);
+        const minC = Math.min(origR, origG, origB);
+        const sat = maxC === 0 ? 0 : (maxC - minC) / maxC;
+        if (sat < 0.22) {
+          const lumFactor = Math.min(1.0, (origLum - 155) / 75);
+          const satFactor = Math.max(0.0, 1.0 - sat / 0.22);
+          whiteWeight = lumFactor * satFactor;
+        }
+      }
+
+      // 1. 语义色彩通道直接 1:1 复用 (Direct Channel Reuse)
+      // 严格基于原图像素判定是否为植被，杜绝纯白高光/天空/衣服被误判为植被染绿
       let plantWeight = 0;
-      if (h >= 35 && h <= 175 && s >= 0.05) {
-        const dist = Math.abs(h - 105);
-        if (dist <= 40) plantWeight = 1.0;
-        else plantWeight = Math.max(0, 1.0 - (dist - 40) / 30);
+      if (whiteWeight < 0.5 && origH >= 35 && origH <= 175 && origS >= 0.06) {
+        const dist = Math.abs(origH - 105);
+        if (dist <= 40) {
+          plantWeight = 1.0;
+        } else {
+          plantWeight = Math.max(0, 1.0 - (dist - 40) / 30);
+        }
+        plantWeight *= (1.0 - whiteWeight);
 
         if (plantWeight > 0 && greenChannel && greenChannel.present) {
           let desiredH = targetGreenHue;
-          if (v > 0.65) desiredH = targetGreenHi;
-          else if (v < 0.35) desiredH = targetGreenSh;
-          const newHue = h * (1 - plantWeight) + desiredH * plantWeight;
-          const newSat = s * (1 - plantWeight) + targetGreenSat * plantWeight;
-          const newVal = v * (1 - plantWeight * 0.1) + targetGreenVal * (plantWeight * 0.1);
+          if (origV > 0.65) desiredH = targetGreenHi;
+          else if (origV < 0.35) desiredH = targetGreenSh;
+          const newHue = origH * (1 - plantWeight) + desiredH * plantWeight;
+          const newSat = origS * (1 - plantWeight) + targetGreenSat * plantWeight;
+          const newVal = origV * (1 - plantWeight * 0.1) + targetGreenVal * (plantWeight * 0.1);
 
           const [gr, gg, gb] = hsvToRgb(newHue, newSat, newVal);
           r = r * (1 - plantWeight) + gr * plantWeight;
@@ -790,10 +835,10 @@ export interface ToneEngineInterface {
         }
       }
 
-      // 2. 白平衡与色温
-      r += temperature * 1.0;
-      b -= temperature * 1.0;
-      g += tint * 0.8;
+      // 2. 白平衡与色温 (高光纯白区域免疫色偏)
+      r += temperature * 1.0 * (1 - whiteWeight * 0.7);
+      b -= temperature * 1.0 * (1 - whiteWeight * 0.7);
+      g += tint * 0.8 * (1 - whiteWeight);
 
       // 3. 对比度
       if (contrast !== 1.0) {
@@ -820,18 +865,18 @@ export interface ToneEngineInterface {
         b += 19 * highLift;
       }
 
-      // 5. 饱和度
+      // 5. 饱和度 (植被区域与高光白免疫全局拉爆)
       if (saturation !== 1.0) {
-        const effectiveSat = 1.0 + (saturation - 1.0) * (1.0 - plantWeight);
+        const effectiveSat = 1.0 + (saturation - 1.0) * (1.0 - plantWeight) * (1.0 - whiteWeight);
         const gray = 0.299 * r + 0.587 * g + 0.114 * b;
         r = gray + (r - gray) * effectiveSat;
         g = gray + (g - gray) * effectiveSat;
         b = gray + (b - gray) * effectiveSat;
       }
 
-      // 6. 冷暖分离
+      // 6. 冷暖分离 (高光白保护)
       const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-      const splitToneShield = 1.0 - plantWeight;
+      const splitToneShield = (1.0 - plantWeight) * (1.0 - whiteWeight);
       if (lum > 110) {
         const w = Math.min(1.0, (lum - 110) / 120) * splitToneShield;
         r += hiOffset[0] * hiWeight * w;
@@ -885,6 +930,14 @@ export interface ToneEngineInterface {
         r = r * (1 - skinW * 0.75) + skinSafeR * (skinW * 0.75);
         g = g * (1 - skinW * 0.75) + skinSafeG * (skinW * 0.75);
         b = b * (1 - skinW * 0.75) + skinSafeB * (skinW * 0.75);
+      }
+
+      // 9.5 高光纯白与中性灰复原 (White Highlight Guard Recovery)
+      // 杜绝任何多阶段调色引起的泛绿或偏色，确保白色背景、天空、衣服保持洁净
+      if (whiteWeight > 0) {
+        r = r * (1 - whiteWeight) + origR * whiteWeight;
+        g = g * (1 - whiteWeight) + origG * whiteWeight;
+        b = b * (1 - whiteWeight) + origB * whiteWeight;
       }
 
       // 10. 全局强度插值
