@@ -5,7 +5,22 @@ import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const HTML_PATH = path.join(__dirname, '../web/index.html');
+const WEB_DIR = path.join(__dirname, '../web');
+const HTML_PATH = path.join(WEB_DIR, 'index.html');
+
+const MIME_TYPES: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'application/javascript; charset=utf-8',
+  '.ts': 'application/javascript; charset=utf-8',
+  '.tsx': 'text/plain; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.svg': 'image/svg+xml'
+};
 
 export interface RelayServerOptions {
   port?: number;
@@ -40,17 +55,29 @@ export function createRelayServer(options: RelayServerOptions = {}): Promise<Rel
     const parsedUrl = new URL(req.url || '/', `http://${host}`);
     const pathname = parsedUrl.pathname;
 
-    // 1. 静态手机端 H5 页面
-    if (pathname === '/' || pathname === '/index.html') {
-      try {
-        const html = fs.readFileSync(HTML_PATH, 'utf-8');
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(html);
-      } catch (err) {
+    // 1. 静态资源与手机端 H5 页面 (React SPA)
+    if (req.method === 'GET' && !pathname.startsWith('/api/')) {
+      let targetFile = pathname === '/' || pathname === '/index.html' ? HTML_PATH : path.join(WEB_DIR, pathname);
+      // 防止目录遍历漏洞
+      const normalizedPath = path.normalize(targetFile);
+      if (normalizedPath.startsWith(WEB_DIR) && fs.existsSync(normalizedPath) && fs.statSync(normalizedPath).isFile()) {
+        try {
+          const ext = path.extname(normalizedPath).toLowerCase();
+          const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+          const content = fs.readFileSync(normalizedPath);
+          res.writeHead(200, { 'Content-Type': contentType });
+          res.end(content);
+          return;
+        } catch (err) {
+          res.writeHead(500);
+          res.end('Failed to read static file');
+          return;
+        }
+      } else if (pathname === '/' || pathname === '/index.html') {
         res.writeHead(500);
         res.end('Failed to load mobile web UI');
+        return;
       }
-      return;
     }
 
     // 2. 收集 JSON Body
@@ -68,6 +95,7 @@ export function createRelayServer(options: RelayServerOptions = {}): Promise<Rel
         const task = {
           _id: taskId,
           command: body.command || 'unknown',
+          engine_id: body.engine_id || 'claude',
           status: 'RUNNING',
           created_at: Date.now(),
           updated_at: Date.now(),
@@ -79,7 +107,15 @@ export function createRelayServer(options: RelayServerOptions = {}): Promise<Rel
         return;
       }
 
-      // API: GET /api/tasks/:id (查询任务)
+      // API: GET /api/tasks (查询所有任务列表)
+      if (pathname === '/api/tasks' && req.method === 'GET') {
+        const list = Array.from(tasks.values());
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify(list));
+        return;
+      }
+
+      // API: GET /api/tasks/:id (查询指定任务)
       const getTaskMatch = pathname.match(/^\/api\/tasks\/([^/]+)$/);
       if (getTaskMatch && req.method === 'GET') {
         const id = getTaskMatch[1];
@@ -151,6 +187,12 @@ export function createRelayServer(options: RelayServerOptions = {}): Promise<Rel
         if (!task) {
           res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8' });
           res.end(JSON.stringify({ error: 'Task not found' }));
+          return;
+        }
+
+        if (body.action_type === 'INPUT' && task.status !== 'WAITING_CONFIRMATION') {
+          res.writeHead(409, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: 'Conflict: task is not waiting for input' }));
           return;
         }
 

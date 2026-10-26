@@ -17,15 +17,19 @@ description: >-
 2. **TRD 架构设计与接口契约先行**：
    - 优先产出**接口签名契约**（方法名、入参、出参、异常、实体结构），编写 TRD（参考 `workflows/development/templates/trd-template.md`）。**凡涉及 JS 生态的组件与模型，强制使用 TypeScript Interface / Type 严格声明**。
 3. **全局强制 TypeScript (TS) 规约**：
-   - 任何涉及 Node.js、浏览器前端、脚本工具、CLI 与测试代码，**强制固定为 TypeScript (`.ts`)，严禁使用 JavaScript (`.js`)**。
+   - 任何涉及 Node.js、浏览器前端、脚本工具、CLI 与测试代码，**强制固定为 TypeScript (`.ts`/`.tsx`)，严禁使用 JavaScript (`.js`)**。
    - 启动项目、本地调试、自动化测试一律使用原生 TS 执行命令（如 Node 22.6+ 原生 TS 支持或 tsx），测试用例一律命名为 `*.test.ts`。
-4. **上下文隔离开发 (Context Isolation)**：
+4. **全局强制现代前端框架规约 (Vue 3 / React + TS)**：
+   - 凡涉及 Web、H5、移动端 UI、可视化页面或交互界面的开发，**强制且固定采用 Vue 3 或 React（配合 TypeScript，即 `.vue` + TS 或 `.tsx`）实现组件化与状态驱动**。
+   - **严禁新建使用纯原生 HTML/原生 JS 操控 DOM 的裸页面**，杜绝项目退化为原生 HTML DOM 堆砌；
+   - 前端架构需具备离线/局域网内网免依赖保障（支持本地 vendor 或开箱即用运行时）。
+5. **上下文隔离开发 (Context Isolation)**：
    - **Code-Dev 角色**：基于 TS 接口契约与验收标准实现代码，**严禁偷读测试实现代码**。
    - **TDD 角色**：基于 TS 接口契约编写测试用例，**严禁篡改业务源码**。
-5. **系统化调试排查**：
+6. **系统化调试排查**：
    - 遇到 Bug 按五步走：复现 ➡️ 至少 2 个假设 ➡️ 最小验证实验 ➡️ 锁定根因 ➡️ 编写回归测试修复。
-6. **零容忍测试门禁 (0 Failures)**：
+7. **零容忍测试门禁 (0 Failures)**：
    - 0 失败 = 通过，>0 失败 = 不通过。严禁带着旧失败提交代码。
-7. **原子文档同步与提交**：
+8. **原子文档同步与提交**：
    - 凡新增类/模块、改接口、改模型、改功能边界，必须在**同一个 Git Commit** 中同时提交代码与更新后的文档（参考 `workflows/development/doc-sync.md`）。
 

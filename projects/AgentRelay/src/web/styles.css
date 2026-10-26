@@ -1,0 +1,455 @@
+:root {
+  --bg: #0d1117;
+  --card-bg: #161b22;
+  --border: #30363d;
+  --text: #f0f6fc;
+  --text-muted: #8b949e;
+  --primary: #238636;
+  --primary-hover: #2ea043;
+  --warning: #d29922;
+  --warning-bg: #bb800926;
+  --danger: #da3633;
+  --danger-bg: #f8514926;
+  --blue: #58a6ff;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  background-color: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom) 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+#root {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.container {
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 12px 0 32px 0;
+}
+
+/* 顶部导航与状态条 */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+
+.brand-icon {
+  font-size: 22px;
+}
+
+.device-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #21262d;
+  padding: 4px 10px;
+  border-radius: 16px;
+  font-size: 12px;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #8b949e;
+}
+
+.status-dot.online {
+  background: #3fb950;
+  box-shadow: 0 0 8px #3fb950;
+}
+
+/* 任务主卡片 */
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.task-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.task-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--blue);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  word-break: break-all;
+}
+
+.status-pill {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+  text-transform: uppercase;
+}
+
+.status-pill.RUNNING {
+  background: rgba(56, 139, 253, 0.15);
+  color: var(--blue);
+}
+
+.status-pill.WAITING_CONFIRMATION {
+  background: var(--warning-bg);
+  color: var(--warning);
+  animation: pulse 1.5s infinite;
+}
+
+.status-pill.COMPLETED {
+  background: rgba(46, 160, 67, 0.15);
+  color: #3fb950;
+}
+
+.status-pill.ABORTED, .status-pill.FAILED {
+  background: var(--danger-bg);
+  color: #ff7b72;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* 待确认警示大卡片 */
+.prompt-box {
+  background: #251d08;
+  border: 1px solid #9e6a03;
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.prompt-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--warning);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.prompt-question {
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: #fff;
+}
+
+/* 折叠日志抽屉 */
+.logs-drawer {
+  background: #000;
+  border-radius: 8px;
+  padding: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 11px;
+  color: #c9d1d9;
+  max-height: 140px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  border: 1px solid #30363d;
+}
+
+/* 按钮操作区 */
+.actions-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.btn {
+  appearance: none;
+  border: none;
+  border-radius: 10px;
+  padding: 14px 16px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+
+.btn:active {
+  transform: scale(0.97);
+}
+
+.btn-success {
+  background: var(--primary);
+  color: #fff;
+}
+
+.btn-danger {
+  background: #21262d;
+  color: #f85149;
+  border: 1px solid #363b42;
+}
+
+.btn-danger-kill {
+  background: var(--danger-bg);
+  color: #ff7b72;
+  border: 1px solid var(--danger);
+  grid-column: span 2;
+  font-size: 14px;
+  padding: 10px;
+}
+
+/* 多选题 / 单选题选项卡片样式 */
+.options-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 8px;
+  width: 100%;
+}
+
+.option-btn {
+  appearance: none;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 10px;
+  padding: 12px 14px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.option-btn:active {
+  transform: scale(0.98);
+  background: #21262d;
+  border-color: var(--primary);
+}
+
+.option-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.option-badge {
+  background: rgba(56, 139, 253, 0.2);
+  color: #58a6ff;
+  font-weight: 700;
+  font-size: 13px;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.option-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.option-desc {
+  font-size: 12px;
+  color: #8b949e;
+  line-height: 1.45;
+  padding-left: 34px;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+/* 自定义回复输入框 */
+.custom-input-bar {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.input-box {
+  flex: 1;
+  background: #0d1117;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: #fff;
+  font-size: 14px;
+}
+
+.input-box:focus {
+  outline: none;
+  border-color: var(--blue);
+}
+
+.btn-send {
+  background: #21262d;
+  color: var(--blue);
+  border: 1px solid var(--border);
+  padding: 0 16px;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 8px;
+}
+
+/* 空状态 / 正常进行中提示 */
+.running-notice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 30px 20px;
+  gap: 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(88, 166, 255, 0.2);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* 底部提示 */
+.footer {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+  margin-top: auto;
+  padding-top: 20px;
+}
+
+/* 多任务横滑栏与引擎徽标 */
+.task-tabs-container {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  margin-bottom: 4px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.task-tab-pill {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  background: #161b22;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.task-tab-pill.active {
+  background: #21262d;
+  color: #fff;
+  border-color: var(--blue);
+  box-shadow: 0 0 8px rgba(88, 166, 255, 0.2);
+}
+
+.task-tab-pill.pending {
+  border-color: var(--warning);
+  color: #fff;
+  animation: pulse-warn 1.5s infinite;
+}
+
+@keyframes pulse-warn {
+  0%, 100% { border-color: var(--warning); }
+  50% { border-color: #f0883e; box-shadow: 0 0 10px rgba(210, 153, 34, 0.4); }
+}
+
+.engine-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.engine-tag.antigravity {
+  background: #23863626;
+  color: #3fb950;
+  border: 1px solid #23863640;
+}
+
+.engine-tag.dsh {
+  background: #1f6feb26;
+  color: #58a6ff;
+  border: 1px solid #1f6feb40;
+}
+
+.engine-tag.claude {
+  background: #a371f726;
+  color: #bc8cff;
+  border: 1px solid #a371f740;
+}

@@ -1,11 +1,12 @@
 /**
  * ToneRelay - 本地轻量 Web 预览静态服务器 (纯 Node 原生 TypeScript 运行时支持)
- * 支持原生 TypeScript 文件即时 stripTypes 伺服至移动端 H5 浏览器
+ * 支持原生 TypeScript 文件即时 stripTypes 与 TSX 服务端 Babel 即时编译
  */
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import moduleApi from 'node:module';
 
@@ -20,6 +21,8 @@ const MIME_TYPES: Record<string, string> = {
   '.css': 'text/css; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8',
   '.ts': 'application/javascript; charset=utf-8',
+  '.tsx': 'application/javascript; charset=utf-8',
+  '.jsx': 'application/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
@@ -35,6 +38,51 @@ function logMessage(...args: any[]) {
     fs.appendFileSync(LOG_PATH, msg + '\n');
   } catch {}
   console.log(...args);
+}
+
+// 服务端轻量 Babel 实例初始化 (免去浏览器下载与执行 2.8MB Babel 的巨大性能开销)
+let babelInstance: any = null;
+function getBabel() {
+  if (babelInstance) return babelInstance;
+  try {
+    const babelFile = path.join(STATIC_DIR, 'vendor', 'babel.min.js');
+    if (fs.existsSync(babelFile)) {
+      const babelCode = fs.readFileSync(babelFile, 'utf8');
+      const ctx: any = { console, window: {} };
+      ctx.self = ctx;
+      ctx.window = ctx;
+      vm.createContext(ctx);
+      vm.runInContext(babelCode, ctx);
+      babelInstance = ctx.Babel;
+      logMessage('⚡ Server-side Babel compiler initialized successfully.');
+    }
+  } catch (err: any) {
+    logMessage('⚠️ Failed to initialize Babel in server:', err?.message);
+  }
+  return babelInstance;
+}
+
+const transformCache = new Map<string, { mtime: number; code: string }>();
+function compileTsx(filePath: string, rawContent: string): string {
+  try {
+    const stat = fs.statSync(filePath);
+    const cached = transformCache.get(filePath);
+    if (cached && cached.mtime === stat.mtimeMs) {
+      return cached.code;
+    }
+    const Babel = getBabel();
+    if (Babel) {
+      const res = Babel.transform(rawContent, {
+        filename: path.basename(filePath),
+        presets: ['react', 'typescript']
+      });
+      transformCache.set(filePath, { mtime: stat.mtimeMs, code: res.code });
+      return res.code;
+    }
+  } catch (compileErr: any) {
+    logMessage('❌ Babel compile error for ' + filePath + ':', compileErr?.message);
+  }
+  return rawContent;
 }
 
 const server = http.createServer((req, res) => {
@@ -53,10 +101,14 @@ const server = http.createServer((req, res) => {
   let filePath = path.join(STATIC_DIR, reqPath);
   let ext = path.extname(filePath).toLowerCase();
 
-  // 若请求 .js 但本地存在同名 .ts，则自动映射到 .ts
+  // 若请求 .js 但本地存在同名 .tsx 或 .ts，则自动映射
   if (ext === '.js' && !fs.existsSync(filePath)) {
+    const tsxPath = filePath.slice(0, -3) + '.tsx';
     const tsPath = filePath.slice(0, -3) + '.ts';
-    if (fs.existsSync(tsPath)) {
+    if (fs.existsSync(tsxPath)) {
+      filePath = tsxPath;
+      ext = '.tsx';
+    } else if (fs.existsSync(tsPath)) {
       filePath = tsPath;
       ext = '.ts';
     }
@@ -77,8 +129,13 @@ const server = http.createServer((req, res) => {
     let body: string | Buffer = content;
     let contentType = MIME_TYPES[ext] || 'application/octet-stream';
 
+    // 若伺服 .tsx/.jsx 源码至浏览器，动态通过服务端 Babel 即时转译为浏览器直接可执行的 React JavaScript
+    if (ext === '.tsx' || ext === '.jsx') {
+      contentType = 'application/javascript; charset=utf-8';
+      body = compileTsx(filePath, content.toString('utf8'));
+    }
     // 若伺服 .ts 源码至浏览器，动态通过 Node 内置 stripTypeScriptTypes 转换为浏览器可直接执行的 JavaScript
-    if (ext === '.ts') {
+    else if (ext === '.ts') {
       contentType = 'application/javascript; charset=utf-8';
       try {
         const rawTs = content.toString('utf8');

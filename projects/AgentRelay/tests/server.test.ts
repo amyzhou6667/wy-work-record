@@ -50,10 +50,21 @@ test('RelayServer: 应当支持任务注册、提问上报与手机端决策回�
     assert.ok(polledCmd.command, '必须拉取到手机端下发的指令');
     assert.equal(polledCmd.command.payload, 'y');
 
-    // 6. 验证移动端页面 HTML 正常返回
+    // 6. 验证移动端页面 HTML 正常返回且为 React 架构
     const htmlRes = await fetch(`${baseUrl}/`);
     const htmlText = await htmlRes.text();
     assert.ok(htmlText.includes('AgentRelay'), '应当能访问手机端 H5 页面');
+    assert.ok(htmlText.includes('id="root"'), '应当包含 React 挂载根节点');
+    assert.ok(htmlText.includes('index.tsx'), '应当加载 React TypeScript 入口');
+
+    // 7. 验证 React 组件与样式静态伺服
+    const tsxRes = await fetch(`${baseUrl}/App.tsx`);
+    assert.equal(tsxRes.status, 200);
+    const tsxText = await tsxRes.text();
+    assert.ok(tsxText.includes('export const App: React.FC'), '应当能成功伺服 React App.tsx 源码');
+
+    const cssRes = await fetch(`${baseUrl}/styles.css`);
+    assert.equal(cssRes.status, 200);
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

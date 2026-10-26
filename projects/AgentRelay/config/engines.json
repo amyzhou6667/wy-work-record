@@ -1,0 +1,37 @@
+{
+  "engines": [
+    {
+      "id": "antigravity",
+      "name": "Google Antigravity",
+      "enabled": true,
+      "type": "transcript_file",
+      "config": {
+        "logPathPattern": "%USERPROFILE%\\.gemini\\antigravity\\brain\\*\\.system_generated\\logs\\transcript.jsonl",
+        "extractType": "antigravity_jsonl"
+      }
+    },
+    {
+      "id": "dsh",
+      "name": "DeepSeek Harness",
+      "enabled": true,
+      "type": "process_pty",
+      "config": {
+        "processPatterns": ["dsh", "deepseek-harness"],
+        "promptMatchers": [
+          { "regex": "(y/n|\\[y/n\\]|\\[y/N\\]|\\[Y/n\\])", "type": "confirm", "defaultReply": "y" },
+          { "regex": "(Select option|请选择)[\\s\\S]*?\\[(\\d+)-(\\d+)\\]", "type": "number_select" },
+          { "regex": "(Press ENTER to continue|按回车继续)", "type": "enter_continue", "defaultReply": "\n" }
+        ]
+      }
+    },
+    {
+      "id": "claude",
+      "name": "Claude Code",
+      "enabled": true,
+      "type": "transcript_file",
+      "config": {
+        "logPathPattern": "~/.claude/projects/*/*.jsonl"
+      }
+    }
+  ]
+}

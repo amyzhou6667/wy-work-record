@@ -37,10 +37,15 @@ flowchart TD
 - 凡引入新模块、改接口契约、改数据模型或改业务行为，必须与代码在**同一个 commit** 中提交。
 
 ### 4. 全局强制 TypeScript (TS) 规约
-- 凡涉及 JavaScript/Node.js/前端/脚本/CLI/微任务实现的内容，**强制固定为 TypeScript (`.ts`)**，严禁使用 `.js`。
+- 凡涉及 JavaScript/Node.js/前端/脚本/CLI/微任务实现的内容，**强制固定为 TypeScript (`.ts`/`.tsx`)**，严禁使用 `.js`。
 - 项目启动（CLI/服务）及全量测试必须通过 TS 链路执行（Node 22.6+ 原生 TS 或 tsx 等），接口契约必须直接用 TypeScript `interface` / `type` 定义。
 
-### 5. 系统化调试 (Systematic Debugging)
+### 5. 全局强制现代前端框架规约 (Vue 3 / React + TS)
+- **凡涉及 Web、H5、移动端 UI、可视化页面或交互界面的开发，强制且固定采用 Vue 3 或 React 实现组件化与状态驱动（结合 TypeScript，即 `.vue` + TS 或 `.tsx`）**。
+- **严禁新建使用纯原生 HTML/原生 JS 操控 DOM 的裸页面**，彻底杜绝后续新项目退化为原生 HTML DOM 堆砌代码。
+- 前端项目须具备离线与局域网内网免依赖保障（支持本地 vendor 或开箱即用运行时），确保在无公网环境下也可完整运行。
+
+### 6. 系统化调试 (Systematic Debugging)
 - 遇 Bug 严禁盲目打补丁，按 `复现 ➡️ 至少 2 个假设 ➡️ 最小实验 ➡️ 定位根因 ➡️ 编写回归测试修复` 标准推进。
 
 
