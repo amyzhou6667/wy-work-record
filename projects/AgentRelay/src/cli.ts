@@ -12,6 +12,15 @@ import { SleepBlocker } from './platform/sleep_blocker.ts';
 import { TunnelManager } from './platform/tunnel.ts';
 import { ClaudeWatcher } from './watcher/claude_watcher.ts';
 import { WindowsKeyInjector } from './platform/injector.ts';
+import { fileURLToPath } from 'node:url';
+import { EngineManager } from './engine/manager.ts';
+import { AntigravityAdapter } from './engine/adapters/antigravity.ts';
+import { DshAdapter } from './engine/adapters/dsh.ts';
+import { ClaudeAdapter } from './engine/adapters/claude.ts';
+import type { IEngineAdapter } from './types/engine.ts';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const args = process.argv.slice(2);
 
@@ -19,6 +28,7 @@ const args = process.argv.slice(2);
 let targetCwd = process.cwd();
 let customPublicUrl: string | null = null;
 let noSleepBlock = false;
+let targetEngine = 'auto';
 
 // 提取标志参数
 const cleanedArgs: string[] = [];
@@ -28,6 +38,9 @@ for (let i = 0; i < args.length; i++) {
     i++;
   } else if (args[i] === '--public-url' && args[i + 1]) {
     customPublicUrl = args[i + 1];
+    i++;
+  } else if (args[i] === '--engine' && args[i + 1]) {
+    targetEngine = args[i + 1].toLowerCase();
     i++;
   } else if (args[i] === '--no-sleep-block') {
     noSleepBlock = true;
@@ -186,64 +199,83 @@ if (isWatchMode) {
     } catch (e) {}
   }, 30000);
 
-  const watcher = new ClaudeWatcher(targetCwd);
-  const syncClient = new CloudSyncClient({ mode: 'http', baseUrl: `http://127.0.0.1:${relayPort}` });
-  await syncClient.registerTask(taskId, `Watch: ${path.basename(targetCwd)}`);
-
-  console.log(`[AgentRelay] 👂 正在无侵入监听 Claude 会话流，您在 codemaker 终端的所有操作和提问将实时同步到手机端...`);
-
-  watcher.on('message', async (msg) => {
-    const textPreview = msg.text.split('\n')[0].slice(0, 80);
-    console.log(`\n[AgentRelay] 📨 检测到 Claude 最新产出: "${textPreview}..." (已同步到手机)`);
-    // 仅更新最新日志，不覆盖弹窗状态
+  // 初始化引擎插件管理器与适配器
+  const engineManager = new EngineManager();
+  const enginesConfigPath = path.join(__dirname, '../config/engines.json');
+  if (fs.existsSync(enginesConfigPath)) {
     try {
-      await fetch(`http://127.0.0.1:${relayPort}/api/tasks/${taskId}/logs`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ logs: msg.text.split('\n').slice(-20) })
-      });
+      engineManager.loadFromFile(enginesConfigPath);
+      engineManager.enableHotReload();
     } catch (e) {}
-  });
+  }
+  engineManager.registerAdapter(new AntigravityAdapter());
+  engineManager.registerAdapter(new DshAdapter());
+  engineManager.registerAdapter(new ClaudeAdapter());
 
-  watcher.on('prompt', async (prompt) => {
-    console.log(`\n[AgentRelay] 🔔 触发人工裁决关卡，手机端已震动弹窗！`);
-    console.log(`             提问: "${prompt.question}"`);
-    if (prompt.options && prompt.options.length > 0) {
-      prompt.options.forEach((o: any) => {
-        console.log(`             [${o.index}] ${o.label}`);
-      });
+  let activeAdapter: IEngineAdapter = engineManager.getAdapter('claude') || new ClaudeAdapter();
+  if (targetEngine !== 'auto') {
+    const selected = engineManager.getAdapter(targetEngine);
+    if (selected) {
+      activeAdapter = selected;
     }
-    await syncClient.reportPrompt(taskId, {
-      question: prompt.question,
-      suggested_options: prompt.options || [],
-      recent_logs: prompt.fullText.split('\n').slice(-20)
-    });
+  } else {
+    const detected = await engineManager.autoDetect(targetCwd);
+    if (detected) {
+      activeAdapter = detected;
+    }
+  }
+
+  console.log(`[AgentRelay] 🤖 当前适配引擎: ${activeAdapter.name} (ID: ${activeAdapter.id})`);
+
+  const syncClient = new CloudSyncClient({ mode: 'http', baseUrl: `http://127.0.0.1:${relayPort}` });
+  await fetch(`http://127.0.0.1:${relayPort}/api/tasks`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      taskId,
+      command: `Watch: ${path.basename(targetCwd)}`,
+      engine_id: activeAdapter.id
+    })
   });
 
-  watcher.start(1000);
+  console.log(`[AgentRelay] 👂 正在无侵入监听 ${activeAdapter.name} 会话流，终端操作与阻断提问将实时同步到手机端...`);
+
+  activeAdapter.startWatch(targetCwd, async (session) => {
+    if (session.status === 'pending' && session.currentDecision) {
+      console.log(`\n[AgentRelay] 🔔 触发人工裁决关卡，手机端已震动弹窗！`);
+      console.log(`             提问: "${session.currentDecision.question}"`);
+      await syncClient.reportPrompt(taskId, {
+        question: session.currentDecision.question,
+        suggested_options: (session.currentDecision.options || []).map(o => ({
+          index: String(o.id),
+          label: o.label
+        })),
+        recent_logs: session.recentLogs
+      });
+    } else if (session.recentLogs.length > 0) {
+      try {
+        await fetch(`http://127.0.0.1:${relayPort}/api/tasks/${taskId}/logs`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ logs: session.recentLogs })
+        });
+      } catch (e) {}
+    }
+  });
 
   // 轮询手机端是否有点击决策
   setInterval(async () => {
     const cmd = await syncClient.pollCommand(taskId);
     if (cmd) {
       let action = cmd.payload || (cmd as any).action || '';
-      // 如果手机点的是 'y'，而在中文确认关卡下 Claude 要求回复「确认/通过」，做智能映射
-      if (action.toLowerCase() === 'y' || action.toLowerCase() === 'yes') {
-        action = '确认';
-      }
-
       console.log(`\n[AgentRelay] 📱 收到手机端下发的裁决决策: "${action}"`);
-      console.log(`[AgentRelay] 📋 已将回复 "${action}" 同步写入电脑剪贴板并尝试注入窗口！`);
-      
-      const injectRes = await WindowsKeyInjector.sendKeys(action, 'Claude');
-      if (injectRes && injectRes.success) {
-        console.log(`[AgentRelay] 🎯 成功激活终端窗口: "${injectRes.windowTitle}"`);
-        console.log(`[AgentRelay] ⚡ 已通过硬件键盘仿真注入按键与回车，任务继续推进！`);
-      } else {
-        console.log(`[AgentRelay] ⚠️ 未能自动定位 Claude 终端窗口 (${injectRes?.error || '未找到窗口'})，已保底写入剪贴板。`);
-        console.log(`[AgentRelay] 💡 提示: 您切回 Claude 终端窗口直接按【Ctrl+V】即可粘贴并回车。`);
-      }
-
+      await activeAdapter.injectDecision(taskId, {
+        taskId,
+        engineId: activeAdapter.id,
+        action: 'confirm',
+        payload: action,
+        timestamp: Date.now()
+      });
       await syncClient.ackCommand(cmd._id);
     }
   }, 1000);
@@ -251,7 +283,7 @@ if (isWatchMode) {
   // 监听 Ctrl+C 优雅退出
   process.on('SIGINT', () => {
     console.log('\n[AgentRelay] 🛑 伴侣监听已安全退出');
-    watcher.stop();
+    activeAdapter.stopWatch();
     sleepBlocker.disable();
     tunnelManager.close();
     if (serverInstance) serverInstance.close();

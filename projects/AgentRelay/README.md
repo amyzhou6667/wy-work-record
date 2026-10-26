@@ -16,14 +16,21 @@
 
 ## 🏃 快速启动指南
  
-### 1. 伴侣监听模式 (推荐！零侵扰、不改变任何原生窗口)
-如果您已经在 **codemaker** 或终端中运行了 Claude Code（如正在跑 `/auto-dev ...`），直接在旁边开启守望伴侣：
+### 1. 伴侣监听模式 (推荐！零侵扰、支持多 AI 引擎)
+开启守望伴侣，支持自动嗅探或指定 `--engine auto|antigravity|dsh|claude`：
 ```powershell
+# 自动嗅探引擎（支持 Antigravity / dsh / Claude Code）:
 node projects/AgentRelay/src/cli.ts watch "D:\hyper-v\share\proj\opendeck" --public-url http://5ba752e9.r6.cpolar.cn
+
+# 明确指定监听 Antigravity:
+node projects/AgentRelay/src/cli.ts watch "D:\hyper-v\share\proj\wy-work-record" --engine antigravity
+
+# 明确指定监听 DeepSeek Harness (dsh):
+node projects/AgentRelay/src/cli.ts watch "D:\hyper-v\share\proj\dsh-project" --engine dsh
 ```
-- **电脑端**：继续在原生 codemaker 窗口聊、看全彩高亮日志；
+- **电脑端**：继续在原生终端/IDE 窗口聊、看全彩高亮日志；
 - **手机端**：浏览器/微信打开终端输出的链接，实时监控终端日志流；
-- **智能确认**：当遇到“阶段 B 人工裁决”时，手机会震动并弹窗，点击 `[同意]` 自动注入“确认”或写入剪贴板继续推进！
+- **智能确认与多任务**：手机端支持多任务卡片横滑切换；遇到人工裁决/选择题时，手机自动震动并智能聚焦，大按钮一键放行！
 
 ### 2. 托管执行模式 (可选)
 如果希望由 AgentRelay 统一托管拉起任务：
@@ -40,9 +47,12 @@ node --test projects/AgentRelay/tests/*.test.ts
 
 ## 📁 项目文档导航
 
-- [产品需求文档 (PRD)](./docs/prd/PRD-AgentRelay-远程AI任务伴侣.md)：完整三轮 Superpower 对齐产出的工业级 PRD。
-- [技术方案设计 (TRD)](./docs/trd/TRD-AgentRelay-技术架构方案.md)：包含领域模型、接口签名契约与双向通信机制。
-- [微任务拆解与测试计划 (Tasks)](./docs/trd/tasks-AgentRelay.md)：原子任务清单。
-- 源代码目录：`src/`（全量 TypeScript 实现）
-- 测试用例目录：`tests/`（100% TS 覆盖与 0 失败门禁）
+- [产品需求文档 (PRD V1.0)](./docs/prd/PRD-AgentRelay-远程AI任务伴侣.md)
+- [技术方案设计 (TRD V1.0)](./docs/trd/TRD-AgentRelay-技术架构方案.md)
+- [多引擎扩展需求文档 (PRD V1.1)](./docs/prd/PRD-AgentRelay-多引擎插件扩展.md)：支持 Antigravity、dsh、Claude 的完整 PRD。
+- [多引擎插件技术方案 (TRD V1.1)](./docs/trd/TRD-AgentRelay-多引擎插件架构.md)：可插拔适配器体系、领域契约与双端防冲突设计。
+- [多引擎微任务清单与测试报告 (Tasks V1.1)](./docs/trd/tasks-AgentRelay-多引擎扩展.md)：微任务推进与 32/32 测试通过记录。
+- 源代码目录：`src/`（全量 TypeScript 实现，包含 `src/engine/` 可插拔模块）
+- 移动端前端：`src/web/`（React 18 + TSX 响应式组件驱动，零外部 CDN 强依赖）
+- 测试用例目录：`tests/`（32 个测试 100% 覆盖与 0 失败门禁）
 
