@@ -94,4 +94,56 @@ describe('AntigravityAdapter - Antigravity 专有适配器测试', () => {
     adapter.stopWatch();
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
+
+  it('应当正确解析真实 Antigravity transcript 中的 args 字段及 JSON 序列化 questions', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ag-real-transcript-'));
+    const logDir = path.join(tmpDir, '.system_generated', 'logs');
+    fs.mkdirSync(logDir, { recursive: true });
+    const logFile = path.join(logDir, 'transcript.jsonl');
+
+    // 真实生产数据样本：tool_calls[0].args 且 questions 为序列化 JSON
+    const realAskStep = {
+      step_index: 199,
+      source: 'MODEL',
+      type: 'PLANNER_RESPONSE',
+      status: 'DONE',
+      tool_calls: [
+        {
+          name: 'ask_question',
+          args: {
+            questions: JSON.stringify([
+              {
+                is_multi_select: false,
+                options: [
+                  '(Recommended) 手机端联动测试成功，按键响应正常！',
+                  '测试通过，但希望再调优一下 UI 交互或深色样式',
+                  '测试遇到异常，手机端未展示出提问卡片'
+                ],
+                question: '【AgentRelay 手机联动测试】请检查手机屏幕，是否已收到此提问弹窗与大号操作按键？'
+              }
+            ])
+          }
+        }
+      ]
+    };
+    fs.writeFileSync(logFile, JSON.stringify(realAskStep) + '\n', 'utf-8');
+
+    const adapter = new AntigravityAdapter();
+    let latestSession: RelaySession | null = null;
+    adapter.watchTranscriptFile(logFile, (session) => {
+      latestSession = session;
+    });
+
+    adapter.checkFileUpdates();
+
+    assert.ok(latestSession);
+    assert.equal(latestSession.status, 'pending');
+    assert.ok(latestSession.currentDecision);
+    assert.equal(latestSession.currentDecision.question, '【AgentRelay 手机联动测试】请检查手机屏幕，是否已收到此提问弹窗与大号操作按键？');
+    assert.equal(latestSession.currentDecision.options?.length, 3);
+    assert.equal(latestSession.currentDecision.options?.[0].isRecommended, true);
+
+    adapter.stopWatch();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
 });

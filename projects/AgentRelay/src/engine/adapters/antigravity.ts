@@ -178,31 +178,39 @@ export class AntigravityAdapter implements IEngineAdapter {
       // 检查是否有 tool_calls 调用 ask_question
       if (step.tool_calls && Array.isArray(step.tool_calls)) {
         const askCall = step.tool_calls.find((c: any) => c.name === 'ask_question');
-        if (askCall && askCall.parameters) {
-          const questions = askCall.parameters.questions || [];
-          if (questions.length > 0) {
-            const firstQ = questions[0];
-            const decision: PendingDecision = {
-              taskId: this.currentSession.taskId,
-              engineId: this.id,
-              engineName: this.name,
-              title: 'Antigravity 提问待对齐',
-              question: firstQ.question,
-              isMultiSelect: !!firstQ.is_multi_select,
-              options: (firstQ.options || []).map((opt: string, idx: number) => ({
-                id: idx,
-                label: opt,
-                isRecommended: typeof opt === 'string' && opt.startsWith('(Recommended)')
-              })),
-              timestamp: Date.now()
-            };
-            this.currentSession.status = 'pending';
-            this.currentSession.currentDecision = decision;
-            this.currentSession.lastActiveTime = Date.now();
-            if (this.onUpdateCallback) {
-              this.onUpdateCallback(this.currentSession);
+        if (askCall) {
+          const rawParams = askCall.args || askCall.parameters;
+          if (rawParams) {
+            let questions = rawParams.questions;
+            if (typeof questions === 'string') {
+              try {
+                questions = JSON.parse(questions);
+              } catch {}
             }
-            return;
+            if (Array.isArray(questions) && questions.length > 0) {
+              const firstQ = questions[0];
+              const decision: PendingDecision = {
+                taskId: this.currentSession.taskId,
+                engineId: this.id,
+                engineName: this.name,
+                title: 'Antigravity 提问待对齐',
+                question: firstQ.question,
+                isMultiSelect: !!firstQ.is_multi_select,
+                options: (firstQ.options || []).map((opt: string, idx: number) => ({
+                  id: idx,
+                  label: opt,
+                  isRecommended: typeof opt === 'string' && opt.startsWith('(Recommended)')
+                })),
+                timestamp: Date.now()
+              };
+              this.currentSession.status = 'pending';
+              this.currentSession.currentDecision = decision;
+              this.currentSession.lastActiveTime = Date.now();
+              if (this.onUpdateCallback) {
+                this.onUpdateCallback(this.currentSession);
+              }
+              return;
+            }
           }
         }
       }
