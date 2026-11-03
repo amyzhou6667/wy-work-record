@@ -1,0 +1,98 @@
+{
+  "id": "goal_1793158629552",
+  "userId": "user_default",
+  "title": "高杠杆内容知识微产品 (数字资产/自媒体)",
+  "type": "monetization",
+  "status": "active",
+  "targetMetric": "高杠杆内容知识微产品 (数字资产/自媒体)",
+  "estimatedMonths": 3,
+  "startDate": "2026-10-28",
+  "targetEndDate": "2027-01-26",
+  "milestones": [
+    {
+      "id": "ms_1793158629552_1",
+      "goalId": "goal_1793158629552",
+      "sequence": 1,
+      "title": "定位定型与 MVP 原型验证",
+      "keyDeliverable": "完成对标梳理、明确价值定位、产出最小原型方案",
+      "status": "in_progress",
+      "estimatedWeeks": 2,
+      "dailyActions": [
+        {
+          "id": "act_1793158629552_1",
+          "milestoneId": "ms_1793158629552_1",
+          "title": "梳理 3 个竞品对标账号/服务案例",
+          "instruction": "搜集同领域优秀的 3 个对标案例，记录他们的选题方向与变现路径。",
+          "maxMinutes": 15,
+          "isReducedLoad": false,
+          "status": "pending",
+          "scheduledDate": "2026-10-28"
+        },
+        {
+          "id": "act_1793158629552_2",
+          "milestoneId": "ms_1793158629552_1",
+          "title": "撰写 1 份个人定位与价值主张草案",
+          "instruction": "用一句话回答：我是谁、我能为哪类人解决什么核心问题。",
+          "maxMinutes": 20,
+          "isReducedLoad": false,
+          "status": "pending",
+          "scheduledDate": "2026-10-29"
+        },
+        {
+          "id": "act_1793158629552_3",
+          "milestoneId": "ms_1793158629552_1",
+          "title": "制作首个最小原型内容大纲 (MVP Outline)",
+          "instruction": "列出首期内容或服务框架的 3 个核心要点，拒绝完美主义。",
+          "maxMinutes": 20,
+          "isReducedLoad": false,
+          "status": "pending",
+          "scheduledDate": "2026-10-30"
+        }
+      ]
+    },
+    {
+      "id": "ms_1793158629552_2",
+      "goalId": "goal_1793158629552",
+      "sequence": 2,
+      "title": "内容/微服务矩阵测试与持续曝光",
+      "keyDeliverable": "连续发布 5 篇高质量内容或完成 2 次模拟服务",
+      "status": "pending",
+      "estimatedWeeks": 3,
+      "dailyActions": [
+        {
+          "id": "act_1793158629552_4",
+          "milestoneId": "ms_1793158629552_2",
+          "title": "公开发布第 1 篇价值笔记或展示卡片",
+          "instruction": "将打磨好的内容发布至目标渠道，迈出公开表达关键一步。",
+          "maxMinutes": 20,
+          "isReducedLoad": false,
+          "status": "pending",
+          "scheduledDate": "2026-11-04"
+        }
+      ]
+    },
+    {
+      "id": "ms_1793158629552_3",
+      "goalId": "goal_1793158629552",
+      "sequence": 3,
+      "title": "商业闭环跑通与首笔订单转化",
+      "keyDeliverable": "沉淀高意向种子用户池，完成首笔商业变现交易验证",
+      "status": "pending",
+      "estimatedWeeks": 4,
+      "dailyActions": [
+        {
+          "id": "act_1793158629552_5",
+          "milestoneId": "ms_1793158629552_3",
+          "title": "向 3 名种子潜在用户发起轻量价值交流",
+          "instruction": "私信或交流收集真实反馈，验证变现可行性。",
+          "maxMinutes": 20,
+          "isReducedLoad": false,
+          "status": "pending",
+          "scheduledDate": "2026-11-11"
+        }
+      ]
+    }
+  ],
+  "createdAt": "2026-10-28T03:37:09.552Z",
+  "updatedAt": "2026-10-28T03:37:09.552Z"
+}

@@ -1,0 +1,48 @@
+{
+  "userId": "user_default",
+  "createdAt": "2026-10-28T03:36:39.076Z",
+  "updatedAt": "2026-10-28T03:36:39.076Z",
+  "summary": "具备【内容表达与文案策划】核心素养，每周拥有 5 小时机动时间，适合以轻量资产沉淀开启破局。",
+  "skills": [
+    {
+      "id": "sk_1793158547710_1",
+      "name": "内容表达与文案策划",
+      "category": "hard",
+      "proficiencyLevel": 4,
+      "evidence": "写作，搞出一个好用的产品",
+      "monetizationScore": 88
+    }
+  ],
+  "constraints": {
+    "weeklyAvailableHours": 5,
+    "riskTolerance": "balanced",
+    "currentDomain": "综合成长"
+  },
+  "radarScores": {
+    "hardCompetence": 80,
+    "businessAcumen": 88,
+    "executionDrive": 40,
+    "learningAgility": 50,
+    "resilienceIndex": 75
+  },
+  "recommendedTracks": [
+    {
+      "trackName": "高杠杆内容知识微产品 (数字资产/自媒体)",
+      "rationale": "基于你的【内容表达与文案策划】优势，将经验沉淀为标准化模版或垂直知识笔记，边创作边沉淀影响力。",
+      "estimatedValue": "跑通后预计带来月均 3000~8000 元高边际收益",
+      "matchScore": 92
+    },
+    {
+      "trackName": "1v1 技能解决微服务 (陪跑/诊断/定制)",
+      "rationale": "利用【解决问题】能力，直接为高需求客户提供单点交付，最小闭环跑通商业变现。",
+      "estimatedValue": "单次服务定价 100~500 元，快速建立正向现金流",
+      "matchScore": 86
+    },
+    {
+      "trackName": "垂直技能跃迁与行业影响力构建",
+      "rationale": "将现有能力系统化对齐行业头部标准，用可量化作品集冲刺高薪职位或大厂专家级认知。",
+      "estimatedValue": "长期职业资产增值，提升 30%~50% 岗位议价权",
+      "matchScore": 81
+    }
+  ]
+}

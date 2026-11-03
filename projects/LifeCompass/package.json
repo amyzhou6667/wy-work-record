@@ -1,0 +1,20 @@
+{
+  "name": "life-compass",
+  "version": "1.0.0",
+  "description": "LifeCompass - AI 个人潜能挖掘与人生目标导航系统 (TypeScript)",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.ts",
+    "test": "node --test tests/*.test.ts"
+  },
+  "keywords": [
+    "ai",
+    "life-coach",
+    "career",
+    "resilience",
+    "typescript",
+    "react"
+  ],
+  "author": "",
+  "license": "ISC"
+}
