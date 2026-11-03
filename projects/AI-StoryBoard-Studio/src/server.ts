@@ -7,6 +7,7 @@ import { DocParserEngine } from './engines/docParser.ts';
 import { JianYingSrtEngine } from './engines/srtGenerator.ts';
 import { PromptAdapterEngine } from './engines/promptAdapter.ts';
 import { ExportFormatter } from './engines/exportFormatter.ts';
+import { LLMStoryboardService } from './engines/llmService.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -16,6 +17,7 @@ const docEngine = new DocParserEngine();
 const srtEngine = new JianYingSrtEngine();
 const promptEngine = new PromptAdapterEngine();
 const exportFormatter = new ExportFormatter();
+const llmService = new LLMStoryboardService();
 
 const MIME_MAP: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -61,18 +63,50 @@ export function createRequestHandler() {
       });
     };
 
-    // API 路由
+    // API 路由: 基础解析
     if (pathname === '/api/v1/parse' && req.method === 'POST') {
-      const { fileName, content } = await parseBody();
+      const { fileName, content, characters, aspectRatio } = await parseBody();
       const doc = docEngine.parseTextDocument(fileName || 'novel.txt', content || '');
       const outline = doc.chapters[0] ? docEngine.extractEpisodeOutline(doc.chapters[0]) : null;
-      const shots = doc.chapters[0] ? docEngine.decomposeToShots(doc.chapters[0]) : [];
+      const shots = doc.chapters[0] ? docEngine.decomposeToShots(doc.chapters[0], characters || [], aspectRatio || '9:16') : [];
 
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({ code: 0, data: { doc, outline, shots } }));
       return;
     }
 
+    // API 路由: 大模型智能分镜拆解
+    if (pathname === '/api/v1/ai-decompose' && req.method === 'POST') {
+      const body = await parseBody();
+      const result = await llmService.decompose({
+        novelText: body.novelText || '',
+        aspectRatio: body.aspectRatio || '9:16',
+        characters: body.characters || [],
+        llmConfig: body.llmConfig
+      });
+
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ code: 0, data: result }));
+      return;
+    }
+
+    // API 路由: 单镜头 AI 润色
+    if (pathname === '/api/v1/ai-refine' && req.method === 'POST') {
+      const body = await parseBody();
+      const refinedShot = await llmService.refineShot({
+        shot: body.shot,
+        userInstruction: body.userInstruction || '',
+        characters: body.characters || [],
+        aspectRatio: body.aspectRatio || '9:16',
+        llmConfig: body.llmConfig
+      });
+
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ code: 0, data: { shot: refinedShot } }));
+      return;
+    }
+
+    // API 路由: 剪映 SRT 导出
     if (pathname === '/api/v1/srt' && req.method === 'POST') {
       const { shots, config } = await parseBody();
       const result = srtEngine.generateSubtitles(shots || [], config);
@@ -112,63 +146,50 @@ export function simulateRequest(
     req.method = method;
     req.url = pathname;
     req.headers = { host: 'localhost' };
-    if (body !== undefined) {
-      req._bodyParsed = body;
-    }
+    req._bodyParsed = body;
 
-    const resHeaders: Record<string, string> = {};
     let statusCode = 200;
+    const responseHeaders: Record<string, string> = {};
     let responseBody = '';
 
     const res = {
-      writeHead: (code: number, headers?: Record<string, string>) => {
+      setHeader(name: string, value: string) {
+        responseHeaders[name.toLowerCase()] = value;
+      },
+      writeHead(code: number, headers?: Record<string, string>) {
         statusCode = code;
         if (headers) {
-          Object.assign(resHeaders, headers);
+          Object.assign(responseHeaders, headers);
         }
       },
-      setHeader: (key: string, val: string) => {
-        resHeaders[key] = val;
-      },
-      end: (data?: any) => {
+      end(data?: any) {
         if (data) {
-          responseBody += typeof data === 'string' ? data : data.toString('utf-8');
+          responseBody += Buffer.isBuffer(data) ? data.toString('utf-8') : String(data);
         }
         resolve({
           status: statusCode,
-          headers: resHeaders,
+          headers: responseHeaders,
           text: responseBody,
-          json: () => JSON.parse(responseBody)
+          json: () => {
+            try {
+              return JSON.parse(responseBody);
+            } catch {
+              return null;
+            }
+          }
         });
       }
     };
 
-    Promise.resolve(handler(req, res)).catch((err) => {
-      resolve({
-        status: 500,
-        headers: {},
-        text: err.message,
-        json: () => ({ error: err.message })
-      });
-    });
-
-    if (body !== undefined) {
-      req.emit('data', JSON.stringify(body));
-    }
-    req.emit('end');
+    handler(req, res);
   });
 }
 
-export function createServer() {
-  const handler = createRequestHandler();
-  return http.createServer(handler);
-}
-
-// 直接运行启动
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3200;
-  const server = createServer();
+// 命令行直接启动服务
+if (process.argv[1] && process.argv[1].endsWith('server.ts')) {
+  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+  const server = http.createServer(createRequestHandler());
   server.listen(PORT, () => {
-    console.log(`[AI-StoryBoard-Studio] Server running at http://localhost:${PORT}`);
+    console.log(`🎬 [AI-StoryBoard-Studio] 服务已启动: http://localhost:${PORT}`);
   });
 }

@@ -130,3 +130,28 @@ export interface SubtitleItem {
   speaker?: string;
   text: string;
 }
+
+/**
+ * 大模型 API 服务商通用配置 (OpenAI 协议兼容)
+ */
+export interface LLMConfig {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  temperature?: number;
+}
+
+export interface AIDecomposeRequest {
+  novelText: string;
+  aspectRatio: AspectRatio;
+  characters: CharacterAsset[];
+  llmConfig?: LLMConfig;
+}
+
+export interface AIRefineShotRequest {
+  shot: StoryboardShot;
+  userInstruction: string;
+  characters: CharacterAsset[];
+  aspectRatio: AspectRatio;
+  llmConfig?: LLMConfig;
+}
