@@ -7,6 +7,10 @@ yarn-error.log*
 # Node
 node_modules/
 
+# Test artifacts
+data_test/
+data_web_test/
+
 # OS
 .DS_Store
 Thumbs.db
