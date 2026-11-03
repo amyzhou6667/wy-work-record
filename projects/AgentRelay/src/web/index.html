@@ -26,7 +26,7 @@
 </head>
 <body>
   <div id="root">
-    <!-- 极速首屏 Loading 占位，React 加载后自动接管 -->
+    <!-- 极速首屏 Loading 占位，React 挂载后自动接管 -->
     <div class="container">
       <div class="card" style="padding: 24px; text-align: center;">
         <div class="spinner" style="margin: 0 auto 12px auto;"></div>
@@ -35,7 +35,7 @@
     </div>
   </div>
 
-  <!-- React TypeScript 入口模块 -->
-  <script type="text/babel" data-type="module" data-presets="react,typescript" src="./index.tsx"></script>
+  <!-- React 18 + TypeScript 入口模块 (免裸模块依赖，完美兼容本地离线运行时) -->
+  <script type="text/babel" data-presets="react,typescript" src="./index.tsx"></script>
 </body>
 </html>

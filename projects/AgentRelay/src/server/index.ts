@@ -13,7 +13,7 @@ const MIME_TYPES: Record<string, string> = {
   '.css': 'text/css; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8',
   '.ts': 'application/javascript; charset=utf-8',
-  '.tsx': 'text/plain; charset=utf-8',
+  '.tsx': 'application/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
