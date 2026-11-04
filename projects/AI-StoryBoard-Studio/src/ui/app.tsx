@@ -128,6 +128,7 @@ function App() {
   const [shots, setShots] = useState([]);
   const [selectedShotIndex, setSelectedShotIndex] = useState(0);
   const [activeTabMap, setActiveTabMap] = useState({}); // 每个镜头的当前模型tab { [shotId]: 'midjourney' | 'flux' | 'jimeng' }
+  const [activeModelTab, setActiveModelTab] = useState('midjourney'); // 右侧 Prompt 视窗当前选中的模型
   const [copiedKey, setCopiedKey] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingTip, setLoadingTip] = useState('');
@@ -554,10 +555,10 @@ function App() {
           </Space>
         </header>
 
-        {/* 主体工作区 */}
+        {/* 主体【三栏联动工作区】：左栏剧本拆解 / 中栏视觉分镜流 / 右栏核心生图 Prompt 视窗 */}
         <main className="flex-1 flex overflow-hidden p-3 gap-3">
-          {/* 左栏 (32% 宽度)：小说剧本输入与控制区 */}
-          <section className="w-[32%] flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
+          {/* 左栏 (26% 宽度)：小说剧本输入与控制区 */}
+          <section className="w-[26%] flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
             <div className="px-3.5 py-2.5 border-b border-slate-800 flex items-center justify-between bg-slate-900/90">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-slate-200">📖 小说剧本文本</span>
@@ -573,7 +574,7 @@ function App() {
                   size="small"
                   defaultValue="zhanshen"
                   onChange={(val) => handleSelectSample(val)}
-                  style={{ width: 140 }}
+                  style={{ width: 130 }}
                   options={[
                     { value: 'zhanshen', label: '都市战神爽剧' },
                     { value: 'xuanhuan', label: '东方玄幻逆袭' },
@@ -583,13 +584,13 @@ function App() {
               </Space>
             </div>
 
-            {/* 剧本输入区 (彻底解决文本和背景都是白色看不清的问题) */}
+            {/* 剧本输入区 (显式设定深黑底色与清晰白字，彻底杜绝白底白字) */}
             <div className="p-3 border-b border-slate-800 bg-slate-950/80 flex flex-col gap-2.5">
               <Input.TextArea
                 value={novelText}
                 onChange={(e) => setNovelText(e.target.value)}
                 placeholder="在此粘贴任意网文小说、短剧剧本文本..."
-                rows={7}
+                rows={6}
                 style={{
                   backgroundColor: '#020617',
                   color: '#f8fafc',
@@ -601,7 +602,7 @@ function App() {
                 className="focus:border-indigo-500 rounded-lg selection:bg-indigo-600 selection:text-white"
               />
 
-              {/* 智能拆解按钮组 (彻底避免白底白字，高对比度呈现) */}
+              {/* 智能拆解按钮组 */}
               <div className="flex items-center gap-2">
                 <Button
                   type="primary"
@@ -638,7 +639,7 @@ function App() {
             <div className="flex-1 p-2.5 overflow-y-auto space-y-1.5">
               <div className="text-[11px] font-semibold text-slate-400 mb-1 flex items-center justify-between">
                 <span>镜头索引对照 ({shots.length} 镜)：</span>
-                <span className="text-[10px] text-slate-500">点击高亮跳转</span>
+                <span className="text-[10px] text-slate-500">点击高亮选中</span>
               </div>
               {shots.map((shot, idx) => (
                 <div
@@ -662,28 +663,16 @@ function App() {
             </div>
           </section>
 
-          {/* 右侧主栏 (68% 宽度)：影视级分镜瀑布流卡片 (直接在镜头下方展示 Prompt 与一键复制) */}
-          <section className="flex-1 flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
+          {/* 中栏 (40% 宽度)：影视级分镜瀑布流卡片 */}
+          <section className="w-[40%] flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
             <div className="px-4 py-2.5 border-b border-slate-800 flex items-center justify-between bg-slate-900/90">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-slate-200">🎬 工业级视觉分镜流</span>
                 <Tag color="indigo" className="font-semibold text-[11px] m-0 border-indigo-500/30">
-                  共 {shots.length} 镜 / 预估时长约 {Math.round(shots.reduce((acc, s) => acc + (s.durationSec || 2.5), 0))} 秒
+                  共 {shots.length} 镜 / 约 {Math.round(shots.reduce((acc, s) => acc + (s.durationSec || 2.5), 0))} 秒
                 </Tag>
               </div>
-              <Space size="small">
-                <span className="text-[11px] text-slate-400">剪映字幕: {srtList.length} 句</span>
-                <Button
-                  size="small"
-                  onClick={() => {
-                    const all = shots.map(s => `Shot #${String(s.shotNumber).padStart(2, '0')}: ${s.prompts?.midjourney || ''}`).join('\n\n');
-                    copyToClipboard(all, 'all_prompts');
-                  }}
-                  className="text-xs border-indigo-500/40 text-indigo-300 bg-indigo-950/30"
-                >
-                  📋 一键复制全集 MJ Prompt
-                </Button>
-              </Space>
+              <span className="text-[11px] text-slate-400">剪映字幕: {srtList.length} 句</span>
             </div>
 
             <div className="flex-1 p-3 overflow-y-auto space-y-3">
@@ -701,8 +690,7 @@ function App() {
               ) : (
                 shots.map((shot, idx) => {
                   const isSelected = selectedShotIndex === idx;
-                  const currentTab = activeTabMap[shot.id] || 'midjourney';
-                  const currentPromptText = shot.prompts?.[currentTab] || '';
+                  const cardPrompt = shot.prompts?.[activeModelTab] || shot.prompts?.midjourney || '';
 
                   return (
                     <Card
@@ -717,7 +705,7 @@ function App() {
                         isSelected ? 'ring-2 ring-indigo-500/40 shadow-indigo-500/10' : 'hover:border-slate-600'
                       }`}
                     >
-                      {/* 1. 卡片头部信息徽标 (精致紧凑小字号，解决字体过大问题) */}
+                      {/* 1. 卡片头部信息徽标 */}
                       <div className="flex items-center justify-between mb-2">
                         <Space size={4} wrap>
                           <Tag color="indigo" className="font-mono font-bold text-[11px] m-0 px-1.5 py-0">
@@ -747,7 +735,7 @@ function App() {
                         </Button>
                       </div>
 
-                      {/* 2. 动作神态与环境光影 (调整为精致小字体 text-[11px]，信息清晰不臃肿) */}
+                      {/* 2. 动作神态与台词 */}
                       <div className="text-[11px] text-slate-300 mb-1.5 leading-relaxed">
                         <span className="text-slate-400 font-semibold">🎭 动作: </span>
                         <span>{shot.characterAction}</span>
@@ -760,91 +748,209 @@ function App() {
                         </div>
                       )}
 
-                      <div className="text-[11px] text-slate-400 mb-2.5 flex items-center gap-1">
-                        <span className="text-amber-400/90 font-medium">💡 光影:</span>
-                        <span className="truncate">{shot.environmentLighting}</span>
+                      <div className="text-[11px] text-slate-400 mb-2 flex items-center justify-between">
+                        <span className="truncate max-w-[200px]">💡 {shot.environmentLighting}</span>
+                        <span className="text-[11px] text-indigo-400 font-semibold hover:underline">
+                          {isSelected ? '👉 右侧编辑 Prompt' : '点击查看 Prompt'}
+                        </span>
                       </div>
 
-                      {/* 3. 【核心交互革新】：直接在卡片下方展示生图 Prompt，附带一键复制功能 */}
-                      <div className="bg-slate-950 rounded-lg border border-slate-800 p-2.5 shadow-inner">
-                        <div className="flex items-center justify-between border-b border-slate-800/90 pb-1.5 mb-1.5">
-                          {/* 模型切换按钮组 */}
-                          <div className="flex items-center gap-1">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setActiveTabMap({ ...activeTabMap, [shot.id]: 'midjourney' });
-                              }}
-                              className={`px-2 py-0.5 text-[11px] font-semibold rounded transition ${
-                                currentTab === 'midjourney' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200 bg-slate-900'
-                              }`}
-                            >
-                              Midjourney v6.1
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setActiveTabMap({ ...activeTabMap, [shot.id]: 'flux' });
-                              }}
-                              className={`px-2 py-0.5 text-[11px] font-semibold rounded transition ${
-                                currentTab === 'flux' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200 bg-slate-900'
-                              }`}
-                            >
-                              Flux.1 胶片长文
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setActiveTabMap({ ...activeTabMap, [shot.id]: 'jimeng' });
-                              }}
-                              className={`px-2 py-0.5 text-[11px] font-semibold rounded transition ${
-                                currentTab === 'jimeng' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200 bg-slate-900'
-                              }`}
-                            >
-                              即梦双语
-                            </button>
-                          </div>
-
-                          {/* 一键复制 Prompt 按钮 (醒目高可用) */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              copyToClipboard(currentPromptText, `prompt_${shot.id}`);
-                            }}
-                            className={`px-2.5 py-0.5 text-[11px] font-bold rounded transition flex items-center gap-1 ${
-                              copiedKey === `prompt_${shot.id}`
-                                ? 'bg-emerald-500 text-slate-950 shadow'
-                                : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow'
-                            }`}
-                          >
-                            {copiedKey === `prompt_${shot.id}` ? '✓ 已复制 Prompt' : '📋 一键复制 Prompt'}
-                          </button>
+                      {/* 3. 卡片底部内嵌快捷 Prompt 复制条 (显式深暗黑底色与荧光绿文字，绝对杜绝白底白字) */}
+                      <div
+                        style={{
+                          backgroundColor: '#020617',
+                          color: '#34d399',
+                          border: '1px solid #1e293b'
+                        }}
+                        className="prompt-preview-box rounded-lg p-2 flex items-center justify-between text-[11px] gap-2 shadow-inner"
+                      >
+                        <div className="flex-1 truncate font-mono text-emerald-300 text-[11px]">
+                          <span className="text-slate-500 mr-1 font-sans text-[10px]">[{activeModelTab.toUpperCase()}]:</span>
+                          {cardPrompt || '提示词生成中...'}
                         </div>
-
-                        {/* 提示词展示与编辑文本区 (深黑背景、荧光绿文字，可直接复制或修改) */}
-                        <textarea
-                          value={currentPromptText}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={(e) => {
-                            const newText = e.target.value;
-                            setShots(shots.map(s => s.id === shot.id ? {
-                              ...s,
-                              prompts: {
-                                ...s.prompts,
-                                [currentTab]: newText
-                              }
-                            } : s));
+                        <Button
+                          size="small"
+                          type="primary"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            copyToClipboard(cardPrompt, `card_${shot.id}`);
                           }}
-                          placeholder="提示词生成中..."
-                          rows={2}
-                          className="w-full p-2 bg-slate-900/90 border border-slate-800 rounded text-[11px] font-mono text-emerald-300 focus:outline-none focus:border-indigo-500 resize-none leading-relaxed select-all"
-                        />
+                          style={{
+                            backgroundColor: copiedKey === `card_${shot.id}` ? '#10b981' : '#6366f1',
+                            borderColor: 'transparent',
+                            fontSize: '11px',
+                            height: '22px',
+                            padding: '0 8px',
+                            fontWeight: 'bold'
+                          }}
+                        >
+                          {copiedKey === `card_${shot.id}` ? '✓ 已复制' : '📋 复制'}
+                        </Button>
                       </div>
                     </Card>
                   );
                 })
               )}
             </div>
+          </section>
+
+          {/* 右栏 (34% 宽度常驻视窗)：【🎯 核心多模型 Prompt 展示与参数控制板块】 */}
+          <section className="w-[34%] flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
+            <div className="px-4 py-2.5 border-b border-slate-800 flex items-center justify-between bg-slate-900/90">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></span>
+                  🎯 镜头生图 Prompt 视窗
+                </span>
+                {currentSelectedShot && (
+                  <Tag color="indigo" className="font-mono font-bold text-[11px] m-0 px-1.5 py-0">
+                    Shot #{String(currentSelectedShot.shotNumber).padStart(2, '0')}
+                  </Tag>
+                )}
+              </div>
+
+              {/* 模型选项卡 */}
+              <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800">
+                <button
+                  onClick={() => setActiveModelTab('midjourney')}
+                  className={`px-2 py-0.5 text-xs font-bold rounded transition ${
+                    activeModelTab === 'midjourney' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Midjourney
+                </button>
+                <button
+                  onClick={() => setActiveModelTab('flux')}
+                  className={`px-2 py-0.5 text-xs font-bold rounded transition ${
+                    activeModelTab === 'flux' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Flux.1
+                </button>
+                <button
+                  onClick={() => setActiveModelTab('jimeng')}
+                  className={`px-2 py-0.5 text-xs font-bold rounded transition ${
+                    activeModelTab === 'jimeng' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  即梦双语
+                </button>
+              </div>
+            </div>
+
+            {currentSelectedShot ? (
+              <div className="flex-1 p-3 flex flex-col gap-2.5 overflow-y-auto">
+                {/* 当前镜头属性快览 */}
+                <div className="p-2.5 bg-slate-950/80 rounded-xl border border-slate-800 space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <Tag color="cyan" className="text-[11px] m-0 px-1.5 py-0">{currentSelectedShot.shotSize}</Tag>
+                      <Tag color="orange" className="text-[11px] m-0 px-1.5 py-0">{currentSelectedShot.cameraMovement}</Tag>
+                      <span className="text-[11px] text-slate-400 font-mono">⏱️ {currentSelectedShot.durationSec}s</span>
+                    </div>
+                    <span className="text-[11px] text-slate-400 font-mono">画幅: {aspectRatio}</span>
+                  </div>
+                  <div className="text-[11px] text-slate-300 line-clamp-2">
+                    <span className="text-slate-500 font-semibold">动作: </span>
+                    {currentSelectedShot.characterAction}
+                  </div>
+                  {currentSelectedShot.dialogue && (
+                    <div className="text-[11px] text-indigo-300 italic">
+                      <span className="text-slate-500 not-italic font-semibold">台词: </span>
+                      “{currentSelectedShot.dialogue.text}”
+                    </div>
+                  )}
+                </div>
+
+                {/* 核心生图 Prompt 展示与编辑区 (显式设定深暗黑底色、荧光绿文字，彻底杜绝白底白字) */}
+                <div className="flex-1 flex flex-col bg-slate-950 rounded-xl border border-slate-800 p-3 shadow-inner">
+                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-800/80">
+                    <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                      📋 {activeModelTab === 'midjourney' ? 'Midjourney v6.1 专业提示词' : (activeModelTab === 'flux' ? 'Flux.1 胶片摄影长文描述' : '即梦 / 通用双语精炼提示词')}
+                    </span>
+                    <Button
+                      type="primary"
+                      size="small"
+                      onClick={() => copyToClipboard(currentSelectedShot.prompts?.[activeModelTab] || '', 'current_prompt')}
+                      style={{
+                        backgroundColor: copiedKey === 'current_prompt' ? '#10b981' : '#6366f1',
+                        borderColor: 'transparent',
+                        fontWeight: 'bold',
+                        fontSize: '11px'
+                      }}
+                    >
+                      {copiedKey === 'current_prompt' ? '✓ 已复制 Prompt' : '📋 一键复制 Prompt'}
+                    </Button>
+                  </div>
+
+                  {/* 提示词编辑框 (内联样式强制深黑背景 + 高亮绿文字) */}
+                  <textarea
+                    value={currentSelectedShot.prompts?.[activeModelTab] || ''}
+                    onChange={(e) => {
+                      const newPrompt = e.target.value;
+                      setShots(shots.map((s, idx) => idx === selectedShotIndex ? {
+                        ...s,
+                        prompts: {
+                          ...s.prompts,
+                          [activeModelTab]: newPrompt
+                        }
+                      } : s));
+                    }}
+                    placeholder="提示词生成中..."
+                    style={{
+                      backgroundColor: '#020617',
+                      color: '#34d399',
+                      border: '1px solid #334155',
+                      minHeight: '150px',
+                      fontSize: '12px',
+                      lineHeight: '1.6',
+                      fontFamily: 'monospace'
+                    }}
+                    className="prompt-textarea flex-1 w-full p-2.5 rounded-lg focus:outline-none focus:border-indigo-500 resize-none leading-relaxed select-all"
+                  />
+
+                  <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500">
+                    <span>支持就地直接编辑修改，实时保存</span>
+                    <span className="font-mono text-slate-400">{currentSelectedShot.prompts?.[activeModelTab]?.length || 0} 字符</span>
+                  </div>
+                </div>
+
+                {/* 快捷批量操作工具 */}
+                <div className="p-2.5 bg-slate-950/60 rounded-xl border border-slate-800 flex items-center justify-between">
+                  <span className="text-xs text-slate-400 font-semibold">全集生图处理:</span>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="small"
+                      onClick={() => {
+                        const all = shots.map(s => `Shot #${String(s.shotNumber).padStart(2, '0')}: ${s.prompts?.[activeModelTab] || ''}`).join('\n\n');
+                        copyToClipboard(all, 'all_prompts');
+                      }}
+                      style={{
+                        backgroundColor: copiedKey === 'all_prompts' ? '#10b981' : '#1e293b',
+                        borderColor: '#334155',
+                        color: copiedKey === 'all_prompts' ? '#ffffff' : '#a5b4fc',
+                        fontSize: '11px'
+                      }}
+                    >
+                      {copiedKey === 'all_prompts' ? '✓ 已复制全集 Prompt' : '📋 复制全集 Prompt'}
+                    </Button>
+                    <Button
+                      size="small"
+                      type="primary"
+                      onClick={() => { setExportType('prompts'); setShowExportModal(true); }}
+                      style={{ fontSize: '11px' }}
+                    >
+                      🚀 批量导出清单
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex-1 flex flex-col items-center justify-center p-6 text-slate-500 text-center">
+                <span className="text-4xl mb-2">🎯</span>
+                <p className="text-xs">请在左侧输入文本并拆解分镜，或在中间选择一个镜头</p>
+              </div>
+            )}
           </section>
         </main>
 

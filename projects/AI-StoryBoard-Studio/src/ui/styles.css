@@ -169,3 +169,28 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #475569;
 }
+
+
+/* 全局暗色表单输入与文本域保底 (杜绝任何白底白字) */
+textarea, input[type="text"], input[type="password"] {
+  background-color: #020617 !important;
+  color: #f8fafc !important;
+  border: 1px solid #334155 !important;
+}
+
+textarea::placeholder, input::placeholder {
+  color: #64748b !important;
+}
+
+.prompt-textarea {
+  background-color: #020617 !important;
+  color: #34d399 !important;
+  border: 1px solid #334155 !important;
+  font-family: 'JetBrains Mono', monospace !important;
+}
+
+.prompt-preview-box {
+  background-color: #020617 !important;
+  color: #34d399 !important;
+  border: 1px solid #1e293b !important;
+}
