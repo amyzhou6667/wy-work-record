@@ -25,5 +25,10 @@
     "@types/node": "^26.6.6",
     "tsx": "^4.23.15",
     "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "@ant-design/icons": "^6.3.4",
+    "antd": "^6.6.8",
+    "dayjs": "^1.11.23"
   }
 }

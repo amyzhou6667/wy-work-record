@@ -143,7 +143,29 @@ describe('AI-StoryBoard-Studio Web API & UI 集成测试', () => {
 
     // 2. 模拟前端浏览器环境与首屏挂载生命周期
     let renderedComponent: any = null;
+    const createComponentMock = (name: string): any => {
+      const comp: any = (props: any) => props?.children || null;
+      return new Proxy(comp, {
+        get(target, prop) {
+          if (prop === 'TextArea' || prop === 'Option' || prop === 'Group') return createComponentMock(String(prop));
+          return createComponentMock(String(prop));
+        }
+      });
+    };
+    const antdMock: any = new Proxy({}, {
+      get(target, prop) {
+        if (prop === 'theme') {
+          return { darkAlgorithm: {}, defaultAlgorithm: {} };
+        }
+        if (prop === 'message') {
+          return { success: () => {}, error: () => {}, warning: () => {}, info: () => {} };
+        }
+        return createComponentMock(String(prop));
+      }
+    });
+
     const sandbox: any = {
+      antd: antdMock,
       React: {
         createElement: (type: any, props: any, ...children: any[]) => ({ type, props, children }),
         useState: (init: any) => [typeof init === 'function' ? init() : init, () => {}],
