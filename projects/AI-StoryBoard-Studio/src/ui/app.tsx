@@ -71,21 +71,32 @@ const SAMPLE_NOVELS = {
     ]
   },
   suspense: {
-    name: '悬疑探案 (雨夜迷踪)',
-    text: `第一案 暴雨钟楼
-午夜十二点，倾盆大雨笼罩着废弃钟楼。
-刑警队长陆远撑着黑色雨伞，手电光束刺破浓浓雨雾。
-钟楼暗处，凶手冷冷一笑：“陆队长，你终究慢了一步。”
-陆远眼神一凝，迅速拔出配枪，保险机头咔哒上膛：“放下凶器，你逃不掉了！”
-一道闪电撕裂夜空，照亮了凶手嘴角那一抹诡异的弧度。`,
+    name: '古风权谋 / 反派女帝',
+    text: `夕阳西下，漫天霞光给偌大个京城蒙上了一层柔软的光晕。
+时不虞靠着马车抬头看了许久，直到身边的人提醒：“姑娘，他回来了。”
+眨了眨眼，时不虞收回视线看向不远处的言宅。
+步入正堂，背对着她而立的男人转过身来，那是一张出乎她预料的俊秀面孔。
+两人对视一眼，男子率先行礼：“在下言十安。”
+“时不虞。”时不虞自报家门，在左侧挑了张椅子坐下：“三日后便要抄斩的时家，我就是那个灾星。”
+言十安笑了：“灾星想做什么？”
+“既是灾星，自是要带来些灾难才对得起这名号，比如……”时不虞微微往前倾身：“掀了他的皇位。”`,
     characters: [
       {
-        id: 'char_ly',
-        name: '陆远',
+        id: 'char_sby',
+        name: '时不虞',
+        roleType: 'protagonist',
+        gender: 'female',
+        ageGroup: '19yo',
+        appearancePrompt: 'a 19-year-old calm and sharp Asian noble strategist lady, dressed in elegant understated robes, deep intelligent gaze, composed smile',
+        crefUrl: ''
+      },
+      {
+        id: 'char_ysa',
+        name: '言十安',
         roleType: 'protagonist',
         gender: 'male',
-        ageGroup: '36yo',
-        appearancePrompt: 'a 36-year-old weathered Asian detective with stubble beard, tired yet sharp eyes, wearing wet trenchcoat, holding flashlight and service pistol',
+        ageGroup: '22yo',
+        appearancePrompt: 'a 22-year-old handsome refined Asian noble lord, wearing clean white silk robes, subtle sharp observant eyes',
         crefUrl: ''
       }
     ]
@@ -101,8 +112,8 @@ function App() {
   const [characters, setCharacters] = useState(SAMPLE_NOVELS.zhanshen.characters);
   const [shots, setShots] = useState([]);
   const [selectedShotIndex, setSelectedShotIndex] = useState(0);
-  const [activeTabMap, setActiveTabMap] = useState({});
-  const [copiedShotId, setCopiedShotId] = useState(null);
+  const [activeModelTab, setActiveModelTab] = useState('midjourney'); // 'midjourney' | 'flux' | 'jimeng'
+  const [copiedKey, setCopiedKey] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [loadingTip, setLoadingTip] = useState('');
 
@@ -130,7 +141,8 @@ function App() {
     };
   });
 
-  // 保存 LLM 配置到本地
+  const isLLMConfigured = !!(llmConfig && llmConfig.baseUrl && llmConfig.apiKey);
+
   const saveLLMConfig = (newConfig) => {
     setLlmConfig(newConfig);
     try {
@@ -138,7 +150,7 @@ function App() {
     } catch {}
   };
 
-  // 通用离线高容错分镜生成器 (彻底杜绝硬编码顾北辰与暴雨模板)
+  // 通用离线高容错分镜生成器
   const generateOfflineShots = (text, currentChars, ar) => {
     if (!text || !text.trim()) return [];
     const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
@@ -147,7 +159,6 @@ function App() {
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      // 过滤章节标头
       if (/^(?:第\s*[0-9一二三四两五六七八九十百千万]+\s*[章回节集部卷篇]|Chapter\s+\d+|Episode\s+\d+|序章|引子|尾声)/i.test(line) && line.length < 35) {
         continue;
       }
@@ -159,20 +170,30 @@ function App() {
       if (quoteMatch && quoteMatch.index !== undefined) {
         const textPart = quoteMatch[1];
         const before = line.slice(0, quoteMatch.index).trim();
+        const clauses = before.split(/[，,。；;！!？?]/).filter(c => c.trim());
+        const lastClause = (clauses[clauses.length - 1] || before).trim();
 
-        // 1. 优先精准命中已知角色名
-        const knownChar = currentChars.find(c => before.includes(c.name));
-        if (knownChar) {
-          speaker = knownChar.name;
-        } else {
-          // 2. 动词引导的人名匹配
-          const actionMatch = before.match(/^([\u4e00-\u9fa5]{2,4}?)(?=[，,\s:：]|目光|面色|神色|神情|嘴角|握紧|站在|倒退|大步|踏空|冷笑|沉声|轻声|怒斥|问道|说道|道|喊|喝道|答道|说|心想|暗道|抬手|转身|冷哼)/);
-          if (actionMatch) {
-            speaker = actionMatch[1];
-          } else {
-            const nameMatch = before.match(/^([\u4e00-\u9fa5]{2,3})/);
-            speaker = nameMatch ? nameMatch[1] : '';
+        const isPureAdverb = /^(?:冷声|沉声|轻声|厉声|低声|柔声|转头|抬头|皱眉|笑着|微笑|怒|冷笑)?(?:提醒|说道|说|道|喊|喝道|答道|心想|暗道)[:：]?$/.test(lastClause);
+        if (!isPureAdverb) {
+          const speakerMatch = lastClause.match(/(?:直到|身旁的|迎出来的)?([\u4e00-\u9fa5]{2,6}?)(?:提醒|说道|说|冷笑道|冷笑|沉声|轻声|怒斥|问道|道|喊|喝道|答道|心想|暗道)[:：]?$/);
+          if (speakerMatch && speakerMatch[1] && !/^(?:冷声|沉声|轻声|厉声|低声|柔声)$/.test(speakerMatch[1])) {
+            speaker = speakerMatch[1];
           }
+        }
+
+        if (!speaker) {
+          const charInLast = currentChars.find(c => lastClause.includes(c.name));
+          if (charInLast) speaker = charInLast.name;
+        }
+
+        if (!speaker) {
+          const known = currentChars.find(c => before.includes(c.name));
+          if (known) speaker = known.name;
+        }
+
+        if (!speaker) {
+          const actionMatch = before.match(/^([\u4e00-\u9fa5]{2,4}?)(?=[，,\s:：]|目光|面色|神色|神情|嘴角|握紧|站在|倒退|大步|踏空|冷笑|沉声|轻声|怒斥|问道|说道|道|喊|喝道|答道|说|心想|暗道|抬手|转身|冷哼)/);
+          speaker = actionMatch ? actionMatch[1] : '';
         }
 
         dialogue = {
@@ -191,7 +212,6 @@ function App() {
         ? 'Low-angle Dolly In'
         : (i === 0 ? 'Static Eye-level' : 'Pan Following');
 
-      // 匹配当前出场角色资产
       const activeChars = currentChars.filter(c =>
         (speaker && c.name.includes(speaker)) || line.includes(c.name)
       );
@@ -199,7 +219,6 @@ function App() {
       const charPrompt = activeChars.map(c => c.appearancePrompt).join(' and ');
       const arParam = `--ar ${ar}`;
 
-      // 动态动作神态与光影 (根据原文本语义，杜绝固定模板)
       const cleanAction = line.replace(/[“"「][^”"」]+[”"」]/g, '').trim() || line;
       const characterAction = hasDialogue
         ? `${dialogue.speaker}情感张力迸发，神情专注沉浸 (${cleanAction.slice(0, 24)}...)`
@@ -209,7 +228,6 @@ function App() {
         ? '电影主光侧打，明暗对比立体，高光与阴影过渡柔和'
         : '环境通透自然柔光，边缘光勾勒主体轮廓，景深层次丰富';
 
-      // 构造三模型 Prompt
       const mj = activeChars.length > 0
         ? `${shotSize}, ${cameraMovement}, ${charPrompt}, acting: ${characterAction}, 8k, cinematic lighting, photorealistic ${arParam} --v 6.1 --style raw`
         : `Cinematic wide shot, ${cameraMovement}, scene action: ${characterAction}, atmospheric volumetrics, 8k ${arParam} --v 6.1 --style raw`;
@@ -237,7 +255,7 @@ function App() {
     return resultShots;
   };
 
-  // 初始加载及文本/配置变更时自动生成（离线保底）
+  // 初始加载首屏自动生成
   useEffect(() => {
     if (shots.length === 0 && novelText.trim()) {
       const initialShots = generateOfflineShots(novelText, characters, aspectRatio);
@@ -253,7 +271,9 @@ function App() {
     }
 
     setIsLoading(true);
-    setLoadingTip('好莱坞导演 AI 正在深度研读剧本，拆解影视级视听分镜...');
+    setLoadingTip(isLLMConfigured
+      ? `好莱坞导演 AI (${llmConfig.model}) 正在深度解构剧本与生成多模型 Prompt...`
+      : '正在通过离线智能引擎进行分镜视听结构拆解...');
 
     try {
       const response = await fetch('/api/v1/ai-decompose', {
@@ -267,26 +287,23 @@ function App() {
         })
       });
 
-      if (!response.ok) throw new Error('网络请求失败');
+      if (!response.ok) throw new Error(`HTTP 错误 ${response.status}`);
       const res = await response.json();
 
       if (res.code === 0 && res.data && res.data.shots?.length > 0) {
         setShots(res.data.shots);
         setSelectedShotIndex(0);
-        if (res.data.isAIGenerated) {
-          setCopyGlobalNotice(true);
-          setTimeout(() => setCopyGlobalNotice(false), 2500);
-        }
+        setCopyGlobalNotice(true);
+        setTimeout(() => setCopyGlobalNotice(false), 2500);
       } else {
         throw new Error('未返回有效镜头数据');
       }
     } catch (err) {
       console.warn('AI 拆解失败，转为离线智能算法:', err);
-      // 优雅降级
       const offlineShots = generateOfflineShots(novelText, characters, aspectRatio);
       setShots(offlineShots);
       setSelectedShotIndex(0);
-      alert('已自动使用本地离线规则完成分镜拆解！如需使用大模型深度拆解，请点击右上角【⚙️ AI 模型配置】检查 API Key。');
+      alert(`AI 拆解服务提示：${err.message || '网络请求超时'}。已自动使用高容错离线规则为您拆解分镜！`);
     } finally {
       setIsLoading(false);
     }
@@ -347,6 +364,9 @@ function App() {
     setSelectedShotIndex(0);
   };
 
+  // 当前选中的分镜镜头
+  const currentSelectedShot = shots[selectedShotIndex] || shots[0] || null;
+
   // 实时 SRT 字幕列表计算
   const srtList = useMemo(() => {
     const list = [];
@@ -400,11 +420,12 @@ function App() {
     URL.revokeObjectURL(url);
   };
 
-  const copyToClipboard = (text, id) => {
+  const copyToClipboard = (text, key) => {
+    if (!text) return;
     navigator.clipboard.writeText(text);
-    if (id) {
-      setCopiedShotId(id);
-      setTimeout(() => setCopiedShotId(null), 1800);
+    if (key) {
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey(null), 1800);
     } else {
       setCopyGlobalNotice(true);
       setTimeout(() => setCopyGlobalNotice(false), 2000);
@@ -412,54 +433,54 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 font-sans selection:bg-indigo-600 selection:text-white">
+    <div className="h-screen flex flex-col bg-slate-950 text-slate-100 font-sans selection:bg-indigo-600 selection:text-white overflow-hidden">
       {/* 顶部控制台导航栏 */}
-      <header className="sticky top-0 z-50 bg-slate-900/95 backdrop-blur border-b border-slate-800 px-6 py-3 flex items-center justify-between shadow-lg">
+      <header className="flex-none bg-slate-900/95 backdrop-blur border-b border-slate-800 px-6 py-2.5 flex items-center justify-between shadow-lg">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-white shadow-indigo-500/20 shadow-lg">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center font-bold text-white shadow-indigo-500/20 shadow-lg text-sm">
             AI
           </div>
           <div>
             <h1 className="text-base font-bold text-white tracking-wide flex items-center gap-2">
               AI-StoryBoard-Studio
               <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
-                双模智能分镜工场 v1.5
+                三栏专业分镜工场 v2.0
               </span>
             </h1>
-            <p className="text-xs text-slate-400">长文小说 ➔ 影视级分镜 ➔ MJ/Flux 提示词 ➔ 剪映 SRT 字幕</p>
+            <p className="text-[11px] text-slate-400">小说文本 ➔ 影视级分镜 ➔ 右侧常驻 Prompt 视窗 ➔ 剪映 SRT 字幕</p>
           </div>
         </div>
 
         {/* 顶部控制区 */}
         <div className="flex items-center gap-3">
           {/* 画幅切换 */}
-          <div className="flex items-center bg-slate-800 p-1 rounded-lg border border-slate-700">
+          <div className="flex items-center bg-slate-800 p-0.5 rounded-lg border border-slate-700">
             <button
               onClick={() => {
                 setAspectRatio('9:16');
                 setShots(generateOfflineShots(novelText, characters, '9:16'));
               }}
-              className={`px-3 py-1 text-xs font-semibold rounded-md transition ${
+              className={`px-2.5 py-1 text-xs font-semibold rounded-md transition ${
                 aspectRatio === '9:16' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              📱 9:16 竖屏
+              📱 9:16 竖屏短剧
             </button>
             <button
               onClick={() => {
                 setAspectRatio('16:9');
                 setShots(generateOfflineShots(novelText, characters, '16:9'));
               }}
-              className={`px-3 py-1 text-xs font-semibold rounded-md transition ${
+              className={`px-2.5 py-1 text-xs font-semibold rounded-md transition ${
                 aspectRatio === '16:9' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              🎬 16:9 横屏
+              🎬 16:9 电影横屏
             </button>
           </div>
 
           {/* 剪映配音语速滑块 */}
-          <div className="flex items-center gap-2 bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700">
+          <div className="flex items-center gap-2 bg-slate-800 px-3 py-1 rounded-lg border border-slate-700">
             <span className="text-xs text-slate-400">配音语速:</span>
             <input
               type="range"
@@ -468,7 +489,7 @@ function App() {
               step="0.1"
               value={speedWps}
               onChange={(e) => setSpeedWps(parseFloat(e.target.value))}
-              className="w-16 cursor-pointer accent-indigo-500"
+              className="w-14 cursor-pointer accent-indigo-500"
             />
             <span className="text-xs font-mono text-indigo-400 font-semibold">{speedWps} 字/秒</span>
           </div>
@@ -476,7 +497,7 @@ function App() {
           {/* 角色资产库抽屉按钮 */}
           <button
             onClick={() => setShowCharDrawer(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
+            className="flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
           >
             👤 角色库 ({characters.length})
           </button>
@@ -484,62 +505,63 @@ function App() {
           {/* 大模型 API 配置按钮 */}
           <button
             onClick={() => setShowLLMModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
-            title="配置 OpenAI / DeepSeek / Ollama API"
+            className={`flex items-center gap-1.5 px-3 py-1 text-xs font-semibold rounded-lg border transition ${
+              isLLMConfigured
+                ? 'bg-emerald-950/40 text-emerald-300 border-emerald-500/40 hover:bg-emerald-900/50'
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+            }`}
           >
             ⚙️ AI 模型配置
-            {llmConfig.apiKey && (
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            )}
+            <span className={`w-2 h-2 rounded-full ${isLLMConfigured ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></span>
           </button>
 
           {/* 导出中心按钮 */}
           <button
             onClick={() => { setExportType('srt'); setShowExportModal(true); }}
-            className="flex items-center gap-1.5 px-4 py-1.5 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 transition"
+            className="flex items-center gap-1.5 px-3.5 py-1 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 transition"
           >
-            🚀 导出物料
+            🚀 导出中心
           </button>
         </div>
       </header>
 
       {/* 快捷全局复制反馈 Toast */}
       {copyGlobalNotice && (
-        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-emerald-500 text-slate-950 font-bold px-4 py-1.5 rounded-full text-xs shadow-xl transition-all">
+        <div className="fixed top-14 left-1/2 -translate-x-1/2 z-50 bg-emerald-500 text-slate-950 font-bold px-4 py-1.5 rounded-full text-xs shadow-xl transition-all">
           ✓ 操作成功完成！
         </div>
       )}
 
       {/* 加载中遮罩 */}
       {isLoading && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex flex-col items-center justify-center gap-4">
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex flex-col items-center justify-center gap-4">
           <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
           <p className="text-sm font-semibold text-slate-200">{loadingTip || 'AI 正在处理中，请稍候...'}</p>
         </div>
       )}
 
-      {/* 主体双栏联动工作区 */}
-      <main className="flex-1 flex overflow-hidden p-4 gap-4">
-        {/* 左栏：小说原著与章节联动视窗 */}
-        <section className="w-1/3 flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
-          <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between bg-slate-900/80">
+      {/* 主体【三栏联动工作区】 */}
+      <main className="flex-1 flex overflow-hidden p-3 gap-3">
+        {/* 左栏 (28% 宽度)：小说原著与拆解控制区 */}
+        <section className="w-[28%] flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
+          <div className="px-3.5 py-2.5 border-b border-slate-800 flex items-center justify-between bg-slate-900/90">
             <div className="flex items-center gap-2">
-              <span className="text-sm font-bold text-slate-200">📖 小说剧本文本</span>
-              <span className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-400">
+              <span className="text-xs font-bold text-slate-200">📖 小说剧本文本</span>
+              <span className="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-mono">
                 {novelText.replace(/\s+/g, '').length} 字
               </span>
             </div>
 
-            {/* 多题材快速载入下拉 */}
-            <div className="flex items-center gap-1 text-xs">
+            {/* 范例下拉 */}
+            <div className="flex items-center gap-1 text-[11px]">
               <span className="text-slate-400">范例:</span>
               <select
                 onChange={(e) => handleSelectSample(e.target.value)}
-                className="bg-slate-800 border border-slate-700 text-indigo-300 text-xs rounded px-2 py-0.5 focus:outline-none"
+                className="bg-slate-800 border border-slate-700 text-indigo-300 text-xs rounded px-1.5 py-0.5 focus:outline-none"
               >
                 <option value="zhanshen">都市战神</option>
                 <option value="xuanhuan">东方玄幻</option>
-                <option value="suspense">悬疑探案</option>
+                <option value="suspense">古风权谋/反派女帝</option>
               </select>
             </div>
           </div>
@@ -547,218 +569,138 @@ function App() {
           <div className="p-3 border-b border-slate-800 bg-slate-950/60 flex flex-col gap-2">
             <textarea
               value={novelText}
-              onChange={(e) => {
-                setNovelText(e.target.value);
-                if (e.target.value.trim()) {
-                  setShots(generateOfflineShots(e.target.value, characters, aspectRatio));
-                } else {
-                  setShots([]);
-                }
-              }}
-              placeholder="在此粘贴任意网文小说、短剧剧本..."
-              className="w-full h-36 p-3 bg-slate-900/80 border border-slate-800 rounded-lg text-xs font-mono text-slate-300 focus:outline-none focus:border-indigo-500 transition resize-none"
+              onChange={(e) => setNovelText(e.target.value)}
+              placeholder="在此粘贴任意小说或剧本文档..."
+              className="w-full h-36 p-2.5 bg-slate-900/90 border border-slate-800 rounded-lg text-xs font-mono text-slate-300 focus:outline-none focus:border-indigo-500 transition resize-none leading-relaxed"
             />
 
-            {/* 双拆解动作按钮 */}
+            {/* 拆解按钮组 */}
             <div className="flex items-center gap-2">
               <button
                 onClick={handleAIDecompose}
                 disabled={isLoading}
                 className="flex-1 py-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-bold rounded-lg text-xs flex items-center justify-center gap-1.5 shadow-md shadow-indigo-600/20 transition disabled:opacity-50"
               >
-                🤖 AI 智能拆解 (大模型)
+                🤖 AI 智能拆解 {isLLMConfigured ? `(${llmConfig.model})` : ''}
               </button>
               <button
                 onClick={handleOfflineDecompose}
                 disabled={isLoading}
-                className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-lg text-xs border border-slate-700 transition"
-                title="不消耗大模型 Token，毫秒级快速本地拆解"
+                className="px-2.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold rounded-lg text-xs border border-slate-700 transition"
+                title="本地离线规则秒级拆解"
               >
-                ⚡ 离线规则
+                ⚡ 本地规则
               </button>
             </div>
           </div>
 
-          {/* 段落与分镜对照视窗 */}
-          <div className="flex-1 p-3 overflow-y-auto space-y-2">
-            <div className="text-xs font-semibold text-slate-400 mb-1">段落对照视窗 (点击定位分镜)：</div>
-            {shots.length === 0 ? (
-              <div className="text-xs text-slate-500 text-center py-8">
-                暂无镜头，请输入文本或载入上方范例
-              </div>
-            ) : (
-              shots.map((shot, idx) => (
-                <div
-                  key={shot.id}
-                  onClick={() => setSelectedShotIndex(idx)}
-                  className={`p-2.5 rounded-lg transition cursor-pointer border ${
-                    selectedShotIndex === idx
-                      ? 'bg-amber-500/10 border-amber-500/60 text-amber-200 shadow-sm'
-                      : 'bg-slate-950/40 border-slate-800/80 hover:border-slate-700 text-slate-400'
-                  }`}
-                >
-                  <div className="flex items-center justify-between text-xs mb-1">
-                    <span className="font-mono font-bold text-indigo-400">镜头 #{String(shot.shotNumber).padStart(2, '0')}</span>
-                    <span className="text-[11px] text-slate-500">{shot.shotSize}</span>
-                  </div>
-                  <p className="text-xs leading-normal line-clamp-2">{shot.matchedParagraph || shot.matchedSourceParagraph}</p>
+          {/* 段落定位视窗 */}
+          <div className="flex-1 p-2.5 overflow-y-auto space-y-1.5">
+            <div className="text-[11px] font-semibold text-slate-400 mb-1 flex items-center justify-between">
+              <span>段落对照列表 ({shots.length} 个镜头)：</span>
+              <span className="text-[10px] text-slate-500">点击选中高亮</span>
+            </div>
+            {shots.map((shot, idx) => (
+              <div
+                key={shot.id}
+                onClick={() => setSelectedShotIndex(idx)}
+                className={`p-2 rounded-lg transition cursor-pointer border text-xs ${
+                  selectedShotIndex === idx
+                    ? 'bg-indigo-600/20 border-indigo-500 text-indigo-200 shadow-sm'
+                    : 'bg-slate-950/40 border-slate-800/80 hover:border-slate-700 text-slate-400'
+                }`}
+              >
+                <div className="flex items-center justify-between text-[11px] mb-0.5">
+                  <span className="font-mono font-bold text-indigo-400">Shot #{String(shot.shotNumber).padStart(2, '0')}</span>
+                  <span className="text-slate-500">{shot.shotSize}</span>
                 </div>
-              ))
-            )}
+                <p className="line-clamp-2 leading-tight text-slate-300 text-[11px]">{shot.matchedParagraph || shot.matchedSourceParagraph}</p>
+              </div>
+            ))}
           </div>
         </section>
 
-        {/* 右栏：影视级分镜流与提示词卡片 */}
-        <section className="flex-1 flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
-          <div className="px-5 py-3 border-b border-slate-800 flex items-center justify-between bg-slate-900/80">
+        {/* 中栏 (40% 宽度)：影视级分镜镜头流 (Shot Stream) */}
+        <section className="w-[40%] flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
+          <div className="px-4 py-2.5 border-b border-slate-800 flex items-center justify-between bg-slate-900/90">
             <div className="flex items-center gap-2">
-              <span className="text-sm font-bold text-slate-200">🎬 工业级视觉分镜流</span>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 font-semibold">
-                共 {shots.length} 镜 / 预估总长约 {Math.round(shots.reduce((acc, s) => acc + (s.durationSec || 2.5), 0))} 秒
+              <span className="text-xs font-bold text-slate-200">🎬 镜头流卡片</span>
+              <span className="text-[11px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 font-semibold">
+                共 {shots.length} 镜 / 约 {Math.round(shots.reduce((acc, s) => acc + (s.durationSec || 2.5), 0))} 秒
               </span>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-400">剪映对白字幕: {srtList.length} 条</span>
-            </div>
+            <span className="text-[11px] text-slate-400">对白: {srtList.length} 句</span>
           </div>
 
-          <div className="flex-1 p-4 overflow-y-auto space-y-4">
+          <div className="flex-1 p-3 overflow-y-auto space-y-3">
             {shots.length === 0 ? (
-              /* 空状态占位提示符 (解决用户删除样本后提示词完全消失的盲区) */
-              <div className="h-full flex flex-col items-center justify-center p-8 border border-dashed border-slate-800 rounded-xl bg-slate-950/40 text-center">
-                <span className="text-5xl mb-3">🎬</span>
-                <h3 className="text-base font-bold text-slate-200 mb-1">等待剧本文本输入</h3>
-                <p className="text-xs text-slate-400 max-w-md mb-6 leading-relaxed">
-                  检测到当前剧本为空或尚未拆解。请在左侧粘贴小说文本，或点击下方按钮载入预设范例，系统将智能识别角色对白、自动推导景别运镜，并实时生成 Midjourney / Flux / 即梦 工业级提示词。
-                </p>
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => handleSelectSample('zhanshen')}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-xs font-bold rounded-lg text-white shadow transition"
-                  >
-                    载入都市战神示例
-                  </button>
-                  <button
-                    onClick={() => handleSelectSample('xuanhuan')}
-                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-semibold rounded-lg text-slate-200 border border-slate-700 transition"
-                  >
-                    载入东方玄幻示例
-                  </button>
-                </div>
+              <div className="h-full flex flex-col items-center justify-center p-6 text-center text-slate-500">
+                <span className="text-4xl mb-2">🎬</span>
+                <p className="text-xs">暂无分镜数据，请在左侧输入文本后点击【AI 智能拆解】</p>
               </div>
             ) : (
               shots.map((shot, idx) => {
-                const activeTab = activeTabMap[shot.id] || 'midjourney';
                 const isSelected = selectedShotIndex === idx;
 
                 return (
                   <div
                     key={shot.id}
                     onClick={() => setSelectedShotIndex(idx)}
-                    className={`p-4 rounded-xl border transition-all ${
+                    className={`p-3 rounded-xl border transition-all cursor-pointer ${
                       isSelected
-                        ? 'bg-slate-800/90 border-indigo-500/80 shadow-2xl ring-1 ring-indigo-500/30'
-                        : 'bg-slate-800/50 border-slate-700/60 hover:border-slate-600'
+                        ? 'bg-slate-800/95 border-indigo-500 shadow-xl ring-2 ring-indigo-500/40'
+                        : 'bg-slate-800/40 border-slate-800 hover:border-slate-700'
                     }`}
                   >
-                    {/* 卡片头部属性徽标与单镜润色 */}
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs font-bold px-2 py-0.5 rounded bg-indigo-600 text-white">
-                          Shot {String(shot.shotNumber).padStart(2, '0')}
+                    {/* 卡片头部信息 */}
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-mono text-xs font-bold px-1.5 py-0.5 rounded bg-indigo-600 text-white">
+                          #{String(shot.shotNumber).padStart(2, '0')}
                         </span>
-                        <span className="text-xs font-semibold px-2 py-0.5 rounded bg-sky-500/20 text-sky-400 border border-sky-500/30">
+                        <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-400 border border-sky-500/30">
                           {shot.shotSize}
                         </span>
-                        <span className="text-xs font-semibold px-2 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                        <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30">
                           {shot.cameraMovement}
                         </span>
-                        <span className="text-xs text-slate-400 font-mono">
+                        <span className="text-[11px] text-slate-400 font-mono">
                           ⏱️ {shot.durationSec}s
                         </span>
                       </div>
 
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setRefineTargetShot(shot);
-                            setShowRefineModal(true);
-                          }}
-                          className="text-xs px-2 py-0.5 rounded bg-slate-700 hover:bg-slate-600 text-indigo-300 border border-slate-600 flex items-center gap-1 transition"
-                        >
-                          ✨ AI 润色
-                        </button>
-                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setRefineTargetShot(shot);
+                          setShowRefineModal(true);
+                        }}
+                        className="text-[11px] px-2 py-0.5 rounded bg-slate-700 hover:bg-slate-600 text-indigo-300 border border-slate-600 transition"
+                      >
+                        ✨ AI 润色
+                      </button>
                     </div>
 
-                    {/* 动作表情与对白 */}
-                    <div className="grid grid-cols-2 gap-3 mb-3 text-xs">
-                      <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/80">
-                        <div className="text-slate-400 font-semibold mb-1">🎭 角色神态与动作：</div>
-                        <div className="text-slate-200">{shot.characterAction}</div>
-                      </div>
-                      <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/80">
-                        <div className="text-slate-400 font-semibold mb-1 flex items-center justify-between">
-                          <span>💬 角色对白台词：</span>
-                          {shot.dialogue && (
-                            <span className="text-indigo-400 font-bold">[{shot.dialogue.speaker}]</span>
-                          )}
-                        </div>
-                        <div className="text-slate-200 italic">
-                          {shot.dialogue ? `“${shot.dialogue.text}”` : <span className="text-slate-500">（无对白 / 纯视觉镜头）</span>}
-                        </div>
-                      </div>
+                    {/* 动作神态 */}
+                    <div className="text-xs text-slate-300 mb-1.5 leading-snug">
+                      <span className="text-slate-400 font-semibold">🎭 动作: </span>
+                      {shot.characterAction}
                     </div>
 
-                    {/* 多模型 Prompt 切换与复制板块 (核心高保真区域) */}
-                    <div className="bg-slate-950/80 rounded-lg border border-slate-800 p-3">
-                      <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-2">
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setActiveTabMap({ ...activeTabMap, [shot.id]: 'midjourney' }); }}
-                            className={`px-2.5 py-1 text-xs font-semibold rounded transition ${
-                              activeTab === 'midjourney' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
-                            }`}
-                          >
-                            Midjourney v6.1
-                          </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setActiveTabMap({ ...activeTabMap, [shot.id]: 'flux' }); }}
-                            className={`px-2.5 py-1 text-xs font-semibold rounded transition ${
-                              activeTab === 'flux' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
-                            }`}
-                          >
-                            Flux.1 电影长文
-                          </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setActiveTabMap({ ...activeTabMap, [shot.id]: 'jimeng' }); }}
-                            className={`px-2.5 py-1 text-xs font-semibold rounded transition ${
-                              activeTab === 'jimeng' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
-                            }`}
-                          >
-                            即梦 / 通用双语
-                          </button>
-                        </div>
-
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            copyToClipboard(shot.prompts?.[activeTab] || '', shot.id);
-                          }}
-                          className={`text-xs px-2.5 py-1 rounded font-semibold transition ${
-                            copiedShotId === shot.id
-                              ? 'bg-emerald-500 text-slate-950 font-bold'
-                              : 'bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-slate-700'
-                          }`}
-                        >
-                          {copiedShotId === shot.id ? '✓ 已复制 Prompt' : '📋 复制 Prompt'}
-                        </button>
+                    {/* 对白台词 */}
+                    {shot.dialogue && (
+                      <div className="text-xs bg-slate-950/60 p-2 rounded-lg border border-slate-800 text-slate-200 italic mb-1.5">
+                        <span className="text-indigo-400 font-bold not-italic">[{shot.dialogue.speaker}]: </span>
+                        “{shot.dialogue.text}”
                       </div>
+                    )}
 
-                      <div className="font-mono text-xs text-slate-300 leading-relaxed select-all">
-                        {shot.prompts?.[activeTab] || '提示词生成中...'}
-                      </div>
+                    {/* 底部光影与提示词缩略 */}
+                    <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-800/80">
+                      <span className="truncate max-w-[200px]">💡 {shot.environmentLighting}</span>
+                      <span className="text-indigo-400 font-semibold hover:underline">
+                        {isSelected ? '👉 右侧编辑 Prompt' : '查看 Prompt'}
+                      </span>
                     </div>
                   </div>
                 );
@@ -766,11 +708,155 @@ function App() {
             )}
           </div>
         </section>
+
+        {/* 右栏 (32% 宽度常驻视窗)：【🎯 核心多模型 Prompt 展示与参数控制板块】 */}
+        <section className="flex-1 flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
+          <div className="px-4 py-2.5 border-b border-slate-800 flex items-center justify-between bg-slate-900/90">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></span>
+                🎯 镜头生图 Prompt 视窗
+              </span>
+              {currentSelectedShot && (
+                <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-indigo-600/30 text-indigo-300 border border-indigo-500/40">
+                  Shot #{String(currentSelectedShot.shotNumber).padStart(2, '0')}
+                </span>
+              )}
+            </div>
+
+            {/* 模型选项卡 */}
+            <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800">
+              <button
+                onClick={() => setActiveModelTab('midjourney')}
+                className={`px-2 py-1 text-xs font-bold rounded-md transition ${
+                  activeModelTab === 'midjourney' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Midjourney
+              </button>
+              <button
+                onClick={() => setActiveModelTab('flux')}
+                className={`px-2 py-1 text-xs font-bold rounded-md transition ${
+                  activeModelTab === 'flux' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Flux.1
+              </button>
+              <button
+                onClick={() => setActiveModelTab('jimeng')}
+                className={`px-2 py-1 text-xs font-bold rounded-md transition ${
+                  activeModelTab === 'jimeng' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                即梦双语
+              </button>
+            </div>
+          </div>
+
+          {currentSelectedShot ? (
+            <div className="flex-1 p-4 flex flex-col gap-3 overflow-y-auto">
+              {/* 当前镜头视听标签摘要 */}
+              <div className="p-3 bg-slate-950/80 rounded-xl border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="text-indigo-400 font-bold">{currentSelectedShot.shotSize}</span>
+                    <span className="text-slate-500">|</span>
+                    <span className="text-amber-400">{currentSelectedShot.cameraMovement}</span>
+                    <span className="text-slate-500">|</span>
+                    <span className="text-slate-300 font-mono">{currentSelectedShot.durationSec}s</span>
+                  </div>
+                  <span className="text-[11px] text-slate-400 font-mono">画幅: {aspectRatio}</span>
+                </div>
+                <div className="text-xs text-slate-300 line-clamp-2">
+                  <span className="text-slate-500 font-semibold">动作: </span>
+                  {currentSelectedShot.characterAction}
+                </div>
+                {currentSelectedShot.dialogue && (
+                  <div className="text-xs text-indigo-300 italic">
+                    <span className="text-slate-500 not-italic font-semibold">台词: </span>
+                    “{currentSelectedShot.dialogue.text}”
+                  </div>
+                )}
+              </div>
+
+              {/* 核心生图 Prompt 展示与编辑区 */}
+              <div className="flex-1 flex flex-col bg-slate-950 rounded-xl border border-slate-800 p-3 shadow-inner">
+                <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-800/80">
+                  <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+                    📋 {activeModelTab === 'midjourney' ? 'Midjourney v6.1 专业提示词' : (activeModelTab === 'flux' ? 'Flux.1 胶片摄影长文描述' : '即梦 / 通用双语精炼提示词')}
+                  </span>
+                  <button
+                    onClick={() => copyToClipboard(currentSelectedShot.prompts?.[activeModelTab] || '', 'current_prompt')}
+                    className={`px-3 py-1 text-xs font-bold rounded-lg transition flex items-center gap-1 ${
+                      copiedKey === 'current_prompt'
+                        ? 'bg-emerald-500 text-slate-950'
+                        : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow'
+                    }`}
+                  >
+                    {copiedKey === 'current_prompt' ? '✓ 已复制 Prompt' : '📋 一键复制'}
+                  </button>
+                </div>
+
+                <textarea
+                  value={currentSelectedShot.prompts?.[activeModelTab] || ''}
+                  onChange={(e) => {
+                    const newPrompt = e.target.value;
+                    setShots(shots.map((s, idx) => idx === selectedShotIndex ? {
+                      ...s,
+                      prompts: {
+                        ...s.prompts,
+                        [activeModelTab]: newPrompt
+                      }
+                    } : s));
+                  }}
+                  placeholder="提示词生成中..."
+                  className="flex-1 w-full p-2.5 bg-transparent border-0 text-xs font-mono text-emerald-300 focus:outline-none resize-none leading-relaxed select-all"
+                />
+
+                <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500">
+                  <span>支持就地直接编辑修改，修改实时生效</span>
+                  <span>{currentSelectedShot.prompts?.[activeModelTab]?.length || 0} 字符</span>
+                </div>
+              </div>
+
+              {/* 快捷批量操作工具 */}
+              <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800 flex items-center justify-between">
+                <span className="text-xs text-slate-400 font-semibold">全集生图处理:</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      const all = shots.map(s => `Shot ${String(s.shotNumber).padStart(2, '0')}: ${s.prompts?.[activeModelTab] || ''}`).join('\n\n');
+                      copyToClipboard(all, 'all_prompts');
+                    }}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition ${
+                      copiedKey === 'all_prompts'
+                        ? 'bg-emerald-500 text-slate-950 font-bold border-transparent'
+                        : 'bg-slate-800 hover:bg-slate-700 text-indigo-300 border-slate-700'
+                    }`}
+                  >
+                    {copiedKey === 'all_prompts' ? '✓ 已复制全集 Prompt' : '📋 复制全集 Prompt'}
+                  </button>
+                  <button
+                    onClick={() => { setExportType('prompts'); setShowExportModal(true); }}
+                    className="px-3 py-1.5 text-xs font-bold rounded-lg bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-300 border border-indigo-500/40 transition"
+                  >
+                    🚀 批量导出清单
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center p-6 text-slate-500 text-center">
+              <span className="text-4xl mb-2">🎯</span>
+              <p className="text-xs">请在中间选择一个镜头以查看并调试其 Prompt 提示词</p>
+            </div>
+          )}
+        </section>
       </main>
 
       {/* 大模型 API 配置弹窗 (LLM Modal) */}
       {showLLMModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-6 flex flex-col gap-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
@@ -815,9 +901,9 @@ function App() {
                 />
               </div>
 
-              <p className="text-[11px] text-slate-500 leading-normal">
-                支持直连 DeepSeek、OpenAI、硅基流动或本地 Ollama。配置后将在分镜拆解时享受好莱坞导演级视听拆解能力。
-              </p>
+              <div className="p-2.5 rounded-lg bg-indigo-950/40 border border-indigo-500/30 text-[11px] text-indigo-300 leading-relaxed">
+                💡 推荐配置 DeepSeek-V3 (`deepseek-chat`) 或本地 Ollama。配置后拆解分镜将享受好莱坞导演级视听语言与精准 Prompt 输出。
+              </div>
             </div>
 
             <div className="pt-2 flex justify-end">
@@ -825,7 +911,7 @@ function App() {
                 onClick={() => setShowLLMModal(false)}
                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg text-xs"
               >
-                保存配置
+                保存配置并关闭
               </button>
             </div>
           </div>
@@ -834,11 +920,11 @@ function App() {
 
       {/* 单镜头 AI 润色弹窗 (Refine Modal) */}
       {showRefineModal && refineTargetShot && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-6 flex flex-col gap-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-base font-bold text-white flex items-center gap-2">
-                ✨ 导演级 AI 单镜润色 (Shot {refineTargetShot.shotNumber})
+                ✨ 导演级 AI 单镜润色 (Shot #{refineTargetShot.shotNumber})
               </h3>
               <button onClick={() => setShowRefineModal(false)} className="text-slate-400 hover:text-white font-bold">
                 ✕
@@ -854,7 +940,7 @@ function App() {
               <textarea
                 value={refineInstruction}
                 onChange={(e) => setRefineInstruction(e.target.value)}
-                placeholder="例如：将景别调整为特写，增强眼神杀气，背景增加冷雨闪电，运镜改为低角度推镜..."
+                placeholder="例如：将景别调整为大特写，眼神增加杀气与冷笑，背景强化冷雨闪电剪影..."
                 className="w-full h-24 p-3 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500 resize-none"
               />
             </div>
@@ -885,10 +971,7 @@ function App() {
               <h2 className="text-base font-bold text-white flex items-center gap-2">
                 👤 角色一致性资产库
               </h2>
-              <button
-                onClick={() => setShowCharDrawer(false)}
-                className="text-slate-400 hover:text-white text-lg font-bold"
-              >
+              <button onClick={() => setShowCharDrawer(false)} className="text-slate-400 hover:text-white text-lg font-bold">
                 ✕
               </button>
             </div>
@@ -942,9 +1025,9 @@ function App() {
                     id: `char_${Date.now()}`,
                     name: `新角色 ${characters.length + 1}`,
                     roleType: 'protagonist',
-                    gender: 'male',
-                    ageGroup: '25yo',
-                    appearancePrompt: 'a 25-year-old Asian character with distinctive facial features, wearing modern clothing'
+                    gender: 'female',
+                    ageGroup: '20yo',
+                    appearancePrompt: 'a 20-year-old Asian character with distinctive facial features'
                   };
                   setCharacters([...characters, newChar]);
                 }}
@@ -968,7 +1051,7 @@ function App() {
 
       {/* 导出中心模态弹窗 */}
       {showExportModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl flex flex-col max-h-[85vh] overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/90">
               <div className="flex items-center gap-3">
@@ -1029,10 +1112,7 @@ function App() {
                 <div className="space-y-3">
                   <div className="text-xs text-slate-400 flex items-center justify-between">
                     <span>剪映标准时间码预览（语速基准 {speedWps} 字/秒）：</span>
-                    <button
-                      onClick={() => copyToClipboard(srtString)}
-                      className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold"
-                    >
+                    <button onClick={() => copyToClipboard(srtString)} className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold">
                       复制全部字幕
                     </button>
                   </div>
@@ -1059,28 +1139,20 @@ function App() {
                     全集 {aspectRatio} 提示词清单（每镜一行，可直接粘贴进生图批处理工具）：
                   </p>
                   <pre className="p-4 bg-slate-950 rounded-xl border border-slate-800 text-xs font-mono text-indigo-300 overflow-x-auto max-h-80 leading-relaxed">
-                    {shots.map(s => `Shot ${String(s.shotNumber).padStart(2, '0')}: ${s.prompts?.midjourney || ''}`).join('\n\n')}
+                    {shots.map(s => `Shot #${String(s.shotNumber).padStart(2, '0')}: ${s.prompts?.midjourney || ''}`).join('\n\n')}
                   </pre>
                 </div>
               )}
             </div>
 
             <div className="px-6 py-4 border-t border-slate-800 flex items-center justify-between bg-slate-900/90">
-              <span className="text-xs text-slate-500">
-                符合剪映 (CapCut / JianYing) 字幕导入标准
-              </span>
+              <span className="text-xs text-slate-500">符合剪映 (CapCut / JianYing) 字幕导入标准</span>
               <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setShowExportModal(false)}
-                  className="px-4 py-2 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
-                >
+                <button onClick={() => setShowExportModal(false)} className="px-4 py-2 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition">
                   关闭
                 </button>
                 {exportType === 'srt' && (
-                  <button
-                    onClick={() => downloadFile(srtString, 'drama_subtitles.srt', 'text/plain;charset=utf-8')}
-                    className="px-5 py-2 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg transition"
-                  >
+                  <button onClick={() => downloadFile(srtString, 'drama_subtitles.srt', 'text/plain;charset=utf-8')} className="px-5 py-2 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg transition">
                     ⬇️ 下载剪映 SRT 字幕
                   </button>
                 )}
@@ -1115,7 +1187,7 @@ function App() {
                 {exportType === 'prompts' && (
                   <button
                     onClick={() => {
-                      const allPrompts = shots.map(s => `Shot ${String(s.shotNumber).padStart(2, '0')}: ${s.prompts?.midjourney || ''}`).join('\n\n');
+                      const allPrompts = shots.map(s => `Shot #${String(s.shotNumber).padStart(2, '0')}: ${s.prompts?.midjourney || ''}`).join('\n\n');
                       copyToClipboard(allPrompts);
                     }}
                     className="px-5 py-2 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg transition"

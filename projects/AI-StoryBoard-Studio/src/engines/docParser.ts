@@ -97,6 +97,39 @@ export class DocParserEngine {
   }
 
   /**
+   * 智能提取台词说话人 (严格防串角防冒名)
+   */
+  public extractSpeaker(beforeQuote: string, characters: CharacterAsset[]): string {
+    if (!beforeQuote) return '';
+
+    // 取紧邻引号的子句分析
+    const clauses = beforeQuote.split(/[，,。；;！!？?]/).filter(c => c.trim());
+    const lastClause = (clauses[clauses.length - 1] || beforeQuote).trim();
+
+    // 1. 优先检查引语子句是否有第三人明确动作，如 "直到身边的人提醒"、"门子快步上前道"
+    const thirdPartyMatch = lastClause.match(/(?:直到|身旁的|迎出来的|门外的)([\u4e00-\u9fa5]{2,5}?)(?:提醒|说道|说|道|高呼|喊道)[:：]?$/);
+    if (thirdPartyMatch && thirdPartyMatch[1]) {
+      return thirdPartyMatch[1];
+    }
+
+    // 2. 检查最后子句是否包含已知配置角色名
+    const charInLast = characters.find(c => lastClause.includes(c.name));
+    if (charInLast) return charInLast.name;
+
+    // 3. 全局已知角色精准匹配 (如: "萧炎握紧玄重尺，冷声道：")
+    const knownChar = characters.find(c => beforeQuote.includes(c.name));
+    if (knownChar) return knownChar.name;
+
+    // 4. 句首动词或状态引导的人名匹配
+    const actionSplitMatch = beforeQuote.match(/^([\u4e00-\u9fa5]{2,4}?)(?=[，,\s:：]|目光|面色|神色|神情|嘴角|握紧|站在|倒退|大步|踏空|冷笑|沉声|轻声|怒斥|问道|说道|道|喊|喝道|答道|说|心想|暗道|抬手|转身|冷哼)/);
+    if (actionSplitMatch && actionSplitMatch[1]) return actionSplitMatch[1];
+
+    // 5. 句首 2~3 汉字核心人名保底
+    const nameMatch = beforeQuote.match(/^([\u4e00-\u9fa5]{2,3})/);
+    return nameMatch ? nameMatch[1] : '';
+  }
+
+  /**
    * 拆解单章内容为影视级视觉分镜流 (通用且鲁棒)
    */
   public decomposeToShots(
@@ -121,28 +154,11 @@ export class DocParserEngine {
       if (quoteMatch && quoteMatch.index !== undefined) {
         dialogueText = quoteMatch[1];
         const beforeQuote = para.slice(0, quoteMatch.index).trim();
-
-        // 1. 优先精准命中已知角色名
-        const knownChar = characters.find(c => beforeQuote.includes(c.name));
-        if (knownChar) {
-          speaker = knownChar.name;
-        } else {
-          // 2. 动词/谓词/断句引导的人名提取
-          const actionSplitMatch = beforeQuote.match(/^([\u4e00-\u9fa5]{2,4}?)(?=[，,\s:：]|目光|面色|神色|神情|嘴角|握紧|站在|倒退|大步|踏空|冷笑|沉声|轻声|怒斥|问道|说道|道|喊|喝道|答道|说|心想|暗道|抬手|转身|冷哼)/);
-          if (actionSplitMatch) {
-            speaker = actionSplitMatch[1];
-          } else {
-            // 3. 句首 2~3 汉字核心人名保底
-            const nameMatch = beforeQuote.match(/^([\u4e00-\u9fa5]{2,3})/);
-            if (nameMatch) {
-              speaker = nameMatch[1];
-            }
-          }
-        }
+        speaker = this.extractSpeaker(beforeQuote, characters);
         hasDialogue = true;
       }
 
-      // 智能分镜景别推导：对话镜头偏近景/特写，环境描写偏全景/远景
+      // 智能分镜景别推导
       const shotSize: ShotSize = hasDialogue
         ? (i % 2 === 0 ? 'Close-up' : 'Medium Close-up')
         : (i === 0 ? 'Wide Shot' : (i === rawParagraphs.length - 1 ? 'Extreme Close-up' : 'Medium Shot'));
@@ -168,7 +184,7 @@ export class DocParserEngine {
         ? matchedChars.map(c => c.id) 
         : (speaker ? [`char_${speaker}`] : []);
 
-      // 通用动作神态推导 (基于原句语义摘要，非写死特定小说)
+      // 通用动作神态推导
       const previewText = para.replace(/[“"「][^”"」]+[”"」]/g, '').trim() || para;
       const characterAction = hasDialogue
         ? `${dialogueObj?.speaker || '角色'}神态专注沉浸，情绪张力暗涌 (${para.slice(0, 24)}...)`

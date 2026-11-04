@@ -4,11 +4,14 @@ import type {
   AIRefineShotRequest,
   ShotSize,
   CameraMovement,
-  CharacterAsset
+  CharacterAsset,
+  AspectRatio
 } from '../types/index.ts';
 import { DocParserEngine } from './docParser.ts';
+import { PromptAdapterEngine } from './promptAdapter.ts';
 
 const docEngine = new DocParserEngine();
+const promptEngine = new PromptAdapterEngine();
 
 /**
  * 大模型智能分镜服务引擎 (支持 OpenAI / DeepSeek / Ollama 协议)
@@ -20,7 +23,7 @@ export class LLMStoryboardService {
   public buildSystemPrompt(characters: CharacterAsset[], aspectRatio: string): string {
     const charList = characters.length > 0
       ? characters.map(c => `- ${c.name} (${c.roleType}): ${c.appearancePrompt}`).join('\n')
-      : '（暂未预设角色，请从小说文本中自主提炼角色）';
+      : '（暂未预设角色，请从小说文本中自主提炼核心出镜角色）';
 
     return `你是一名好莱坞资深短剧导演兼 AI 视觉总监。你的任务是将创作者提供的小说或剧本文学文本，拆解为一组极具视觉冲击力和影视工业水准的分镜镜头列表 (10~25 镜)。
 
@@ -67,7 +70,7 @@ ${charList}
   }
 
   /**
-   * 清理与安全解析大模型返回的 JSON
+   * 清理与安全解析大模型返回的 JSON (增强容错)
    */
   public extractJsonFromResponse(rawText: string): any[] {
     let clean = rawText.trim();
@@ -76,17 +79,94 @@ ${charList}
     if (codeBlockMatch) {
       clean = codeBlockMatch[1].trim();
     }
-    // 找到最外层数组括号
-    const startIdx = clean.indexOf('[');
-    const endIdx = clean.lastIndexOf(']');
-    if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
-      clean = clean.slice(startIdx, endIdx + 1);
+
+    // 优先尝试直接 JSON.parse（支持顶层数组或包裹在对象中的 shots）
+    try {
+      const parsed = JSON.parse(clean);
+      if (Array.isArray(parsed)) return parsed;
+      if (parsed && typeof parsed === 'object') {
+        const arrayProp = parsed.shots || parsed.data || parsed.scenes || parsed.items;
+        if (Array.isArray(arrayProp)) return arrayProp;
+      }
+    } catch {
+      // 容错处理：寻找最外层数组括号
+      const startIdx = clean.indexOf('[');
+      let endIdx = clean.lastIndexOf(']');
+      if (startIdx !== -1) {
+        if (endIdx === -1 || endIdx < startIdx) {
+          // JSON 截断容错：尝试在末尾补全闭合符号
+          clean = clean.slice(startIdx) + '}]';
+        } else {
+          clean = clean.slice(startIdx, endIdx + 1);
+        }
+        try {
+          const parsed = JSON.parse(clean);
+          if (Array.isArray(parsed)) return parsed;
+        } catch {
+          // 尝试清理尾部多余逗号再解析
+          const sanitized = clean.replace(/,\s*([\]}])/g, '$1');
+          const parsed = JSON.parse(sanitized);
+          if (Array.isArray(parsed)) return parsed;
+        }
+      }
     }
-    const parsed = JSON.parse(clean);
-    if (!Array.isArray(parsed)) {
-      throw new Error('LLM did not return a JSON array');
-    }
-    return parsed;
+
+    throw new Error('LLM did not return a valid JSON array of shots');
+  }
+
+  /**
+   * 格式化与补全原始分镜镜头（关键：自动补齐三模型提示词，绝对不留空）
+   */
+  public formatRawShots(
+    rawShots: any[],
+    characters: CharacterAsset[],
+    aspectRatio: AspectRatio,
+    novelText: string
+  ): StoryboardShot[] {
+    return rawShots.map((item, idx) => {
+      const charNames: string[] = Array.isArray(item.characterNames) ? item.characterNames : [];
+      const matchedCharIds = characters
+        .filter(c => charNames.includes(c.name) || (item.dialogue?.speaker && c.name.includes(item.dialogue.speaker)))
+        .map(c => c.id);
+
+      const shotNumber = item.shotNumber || idx + 1;
+      const shotSize = (item.shotSize || 'Medium Shot') as ShotSize;
+      const cameraMovement = (item.cameraMovement || 'Static Eye-level') as CameraMovement;
+      const characterAction = item.characterAction || '角色神态专注，视觉张力暗涌推进';
+      const environmentLighting = item.environmentLighting || '自然通透电影主光侧打，景深过渡细腻';
+
+      const dialogue = item.dialogue?.text ? {
+        speaker: item.dialogue.speaker || '角色',
+        text: item.dialogue.text,
+        isVoiceover: !!item.dialogue.isVoiceover
+      } : undefined;
+
+      const baseShot: StoryboardShot = {
+        id: `shot_ai_${shotNumber}`,
+        shotNumber,
+        durationSec: typeof item.durationSec === 'number' ? item.durationSec : 3.0,
+        shotSize,
+        cameraMovement,
+        characterAction,
+        characterIds: matchedCharIds,
+        environmentLighting,
+        dialogue,
+        soundBgm: item.soundBgm || '环境音效与情绪配乐推进',
+        matchedSourceParagraph: item.matchedSourceParagraph || novelText.slice(0, 60),
+        prompts: { midjourney: '', flux: '', jimeng: '' }
+      };
+
+      // 自动使用 PromptAdapterEngine 进行专业三模型提示词保底生成
+      const autoPrompts = promptEngine.generateAllPrompts(baseShot, characters, aspectRatio);
+
+      baseShot.prompts = {
+        midjourney: (item.prompts?.midjourney || item.midjourney || '').trim() || autoPrompts.midjourney,
+        flux: (item.prompts?.flux || item.flux || '').trim() || autoPrompts.flux,
+        jimeng: (item.prompts?.jimeng || item.jimeng || '').trim() || autoPrompts.jimeng
+      };
+
+      return baseShot;
+    });
   }
 
   /**
@@ -117,12 +197,13 @@ ${charList}
           body: JSON.stringify({
             model: llmConfig.model,
             temperature: llmConfig.temperature ?? 0.7,
+            max_tokens: 4096,
             messages: [
               { role: 'system', content: systemPrompt },
               { role: 'user', content: userPrompt }
             ]
           }),
-          signal: AbortSignal.timeout(30000) // 30秒超时
+          signal: AbortSignal.timeout(60000) // 增加到 60秒 超时，适应复杂网文推理
         });
 
         if (!response.ok) {
@@ -133,36 +214,8 @@ ${charList}
         const content = data?.choices?.[0]?.message?.content || '';
         const rawShots = this.extractJsonFromResponse(content);
 
-        // 格式化与补全字段
-        const shots: StoryboardShot[] = rawShots.map((item, idx) => {
-          const charNames: string[] = Array.isArray(item.characterNames) ? item.characterNames : [];
-          const matchedCharIds = characters
-            .filter(c => charNames.includes(c.name) || (item.dialogue?.speaker && c.name.includes(item.dialogue.speaker)))
-            .map(c => c.id);
-
-          return {
-            id: `shot_ai_${idx + 1}`,
-            shotNumber: item.shotNumber || idx + 1,
-            durationSec: typeof item.durationSec === 'number' ? item.durationSec : 3.0,
-            shotSize: (item.shotSize || 'Medium Shot') as ShotSize,
-            cameraMovement: (item.cameraMovement || 'Static Eye-level') as CameraMovement,
-            characterAction: item.characterAction || '角色情绪克制与视觉张力推进',
-            characterIds: matchedCharIds,
-            environmentLighting: item.environmentLighting || '自然通透电影光照，细腻光影过渡',
-            dialogue: item.dialogue?.text ? {
-              speaker: item.dialogue.speaker || '角色',
-              text: item.dialogue.text,
-              isVoiceover: !!item.dialogue.isVoiceover
-            } : undefined,
-            soundBgm: item.soundBgm || '环境环境音与情绪配乐',
-            matchedSourceParagraph: item.matchedSourceParagraph || novelText.slice(0, 60),
-            prompts: {
-              midjourney: item.prompts?.midjourney || '',
-              flux: item.prompts?.flux || '',
-              jimeng: item.prompts?.jimeng || ''
-            }
-          };
-        });
+        // 格式化与补全字段（确保 prompts 100% 完整）
+        const shots = this.formatRawShots(rawShots, characters, aspectRatio, novelText);
 
         if (shots.length > 0) {
           return { shots, isAIGenerated: true };
@@ -220,7 +273,7 @@ ${JSON.stringify(shot, null, 2)}
           temperature: 0.6,
           messages: [{ role: 'user', content: prompt }]
         }),
-        signal: AbortSignal.timeout(15000)
+        signal: AbortSignal.timeout(20000)
       });
 
       if (res.ok) {
@@ -233,12 +286,20 @@ ${JSON.stringify(shot, null, 2)}
         const endIdx = clean.lastIndexOf('}');
         if (startIdx !== -1 && endIdx !== -1) {
           const parsed = JSON.parse(clean.slice(startIdx, endIdx + 1));
-          return {
+          const refinedShot: StoryboardShot = {
             ...shot,
             ...parsed,
             id: shot.id,
             shotNumber: shot.shotNumber
           };
+          // 自动补齐提示词
+          const autoPrompts = promptEngine.generateAllPrompts(refinedShot, characters, aspectRatio);
+          refinedShot.prompts = {
+            midjourney: (parsed.prompts?.midjourney || '').trim() || autoPrompts.midjourney,
+            flux: (parsed.prompts?.flux || '').trim() || autoPrompts.flux,
+            jimeng: (parsed.prompts?.jimeng || '').trim() || autoPrompts.jimeng
+          };
+          return refinedShot;
         }
       }
     } catch (e) {

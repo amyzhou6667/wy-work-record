@@ -30,7 +30,6 @@ describe('LLMStoryboardService (大模型智能分镜服务引擎)', () => {
     const firstShot = result.shots[0];
     assert.strictEqual(firstShot.dialogue?.speaker, '萧炎');
     assert.strictEqual(firstShot.dialogue?.text, '三十年河东，三十年河西，莫欺少年穷！');
-    // 绝不可出现写死的顾北辰
     assert.ok(!firstShot.characterAction.includes('顾北辰'));
     assert.ok(firstShot.characterIds.includes('char_xiao_yan'));
   });
@@ -92,5 +91,46 @@ describe('LLMStoryboardService (大模型智能分镜服务引擎)', () => {
 
     assert.ok(refined.characterAction.includes('润色指令: 改为低角度仰拍'));
     assert.ok(refined.prompts.midjourney.includes('instruction: 改为低角度仰拍'));
+  });
+
+  test('TC-LLM-04: 当大模型返回的分镜缺少 prompts 字段时，必须自动补齐完整三模型提示词', async () => {
+    // 模拟大模型返回缺失 prompts 字段的原始分镜
+    const rawShotMissingPrompts = [
+      {
+        shotNumber: 1,
+        shotSize: 'Close-up',
+        cameraMovement: 'Low-angle Dolly In',
+        durationSec: 3.0,
+        characterAction: '时不虞倚靠马车远眺',
+        characterNames: ['时不虞'],
+        environmentLighting: '夕阳西下金色余晖'
+        // 刻意省略 prompts 字段
+      }
+    ];
+
+    const formattedShots = service.formatRawShots(rawShotMissingPrompts, [], '9:16', '原著内容');
+    assert.strictEqual(formattedShots.length, 1);
+    const shot = formattedShots[0];
+
+    // 断言必须自动补齐，绝对不可为空字符串
+    assert.ok(shot.prompts.midjourney.length > 10, 'Midjourney 提示词必须自动补全且非空');
+    assert.ok(shot.prompts.midjourney.includes('--ar 9:16'), 'MJ 提示词应包含正确的画幅参数');
+    assert.ok(shot.prompts.flux.length > 10, 'Flux 提示词必须自动补全且非空');
+    assert.ok(shot.prompts.jimeng.length > 5, '即梦提示词必须自动补全且非空');
+  });
+
+  test('TC-LLM-05: 面对他人提醒等复杂句式，说话人提取不能误将句首旁观主角当说话人', async () => {
+    const text = '时不虞靠着马车抬头看了许久，直到身边的人提醒：“姑娘，他回来了。”';
+    const result = await service.decompose({
+      novelText: text,
+      aspectRatio: '9:16',
+      characters: [{ id: 'c1', name: '时不虞', roleType: 'protagonist', gender: 'female', ageGroup: '18yo', appearancePrompt: 'young lady' }]
+    });
+
+    assert.ok(result.shots.length > 0);
+    const dialogueShot = result.shots.find(s => s.dialogue?.text.includes('他回来了'));
+    assert.ok(dialogueShot, '应成功切出台词镜头');
+    // 台词是“身边的人”提醒的，说话人绝不能是“时不虞”
+    assert.notStrictEqual(dialogueShot?.dialogue?.speaker, '时不虞', '说话人绝不可被误识别为时不虞');
   });
 });
