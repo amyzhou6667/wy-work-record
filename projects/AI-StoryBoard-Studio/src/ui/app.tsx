@@ -233,16 +233,22 @@ function App() {
   });
 
   const saveLLMConfig = (newConfig) => {
-    setLlmConfig(newConfig);
+    // 自动智能纠偏：若用户填入 /anthropic 或 /chat/completions，自动规范为 /v1
+    const cleanUrl = (newConfig.baseUrl || '').trim().replace(/\/+$/, '').replace(/\/anthropic\/?$/, '/v1').replace(/\/chat\/completions\/?$/, '');
+    const normalized = {
+      ...newConfig,
+      baseUrl: cleanUrl || newConfig.baseUrl
+    };
+    setLlmConfig(normalized);
     try {
-      localStorage.setItem('asbs_llm_config', JSON.stringify(newConfig));
+      localStorage.setItem('asbs_llm_config', JSON.stringify(normalized));
     } catch {}
     // 自动联动更新所有 Agent 配置
     const synced = { ...agentConfigs };
     ['asset', 'script', 'shot', 'prompt'].forEach(k => {
       synced[k] = {
         ...synced[k],
-        llmConfig: { ...newConfig }
+        llmConfig: { ...normalized }
       };
     });
     setAgentConfigs(synced);

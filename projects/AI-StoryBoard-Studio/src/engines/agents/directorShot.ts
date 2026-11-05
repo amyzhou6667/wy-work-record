@@ -41,9 +41,10 @@ ${JSON.stringify(input.scriptScenes, null, 2)}
 ]`;
 
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 15000);
+        const timer = setTimeout(() => controller.abort(), 60000);
 
-        const response = await fetch(`${config.llmConfig.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
+        const cleanBaseUrl = config.llmConfig.baseUrl.trim().replace(/\/+$/, '').replace(/\/anthropic\/?$/, '/v1').replace(/\/chat\/completions\/?$/, '');
+        const response = await fetch(`${cleanBaseUrl}/chat/completions`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -63,7 +64,8 @@ ${JSON.stringify(input.scriptScenes, null, 2)}
 
         if (response.ok) {
           const resJson: any = await response.json();
-          const content = resJson.choices?.[0]?.message?.content || '';
+          const choice = resJson.choices?.[0]?.message;
+          const content = choice?.content || choice?.reasoning_content || '';
           const match = content.match(/\[[\s\S]*\]/);
           if (match) {
             const parsed = JSON.parse(match[0]);
