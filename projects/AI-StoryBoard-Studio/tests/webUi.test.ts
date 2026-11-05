@@ -202,15 +202,17 @@ describe('AI-StoryBoard-Studio Web API & UI 集成测试', () => {
     assert.ok(renderedComponent, 'React 根节点应成功触发 render 调用');
   });
 
-  test('TC-WEB-07: 验证三栏布局包含右侧常驻 Prompt 视窗且样式杜绝白底白字', () => {
+  test('TC-WEB-07: 验证删除右栏全面弹窗化展示 Prompt 视窗且样式杜绝白底白字', () => {
     const appPath = path.join(__dirname, '../src/ui/app.tsx');
     const cssPath = path.join(__dirname, '../src/ui/styles.css');
     const appCode = fs.readFileSync(appPath, 'utf-8');
     const cssCode = fs.readFileSync(cssPath, 'utf-8');
 
-    // 1. 验证 app.tsx 中存在右侧常驻 Prompt 视窗与模型切换
-    assert.ok(appCode.includes('镜头生图 Prompt 视窗'), '必须包含右侧常驻 Prompt 视窗');
-    assert.ok(appCode.includes('activeModelTab'), '必须包含全局模型 Tab 切换状态');
+    // 1. 验证工作区为双栏聚焦布局 (删除旧三栏右侧常驻栏)，Prompt 功能全面转为弹窗 (Modal)
+    assert.ok(appCode.includes('双栏聚焦工作区'), '必须为双栏工作区，去除第三栏');
+    assert.ok(appCode.includes('showPromptModal'), '必须包含 Prompt 弹窗状态管理');
+    assert.ok(appCode.includes('镜头生图 Prompt 视窗'), '弹窗中必须包含生图 Prompt 视窗与多模型切换');
+    assert.ok(appCode.includes('activeModelTab'), '必须包含模型 Tab 切换状态');
     assert.ok(appCode.includes('一键复制 Prompt'), '必须包含一键复制 Prompt 功能');
 
     // 2. 验证 styles.css 与 app.tsx 中显式设定深黑背景 (#020617) 与高亮绿色文字 (#34d399)
