@@ -98,4 +98,28 @@ describe('PromptAdapterEngine (多生图模型英文提示词适配引擎)', () 
     assert.ok(!prompts.midjourney.includes('--cref'), '无角色时不应注入 --cref');
     assert.ok(prompts.midjourney.includes('cinematic lighting'), '应包含环境构图');
   });
+
+  test('TC-PROMPT-06: Midjourney 与 Flux 提示词必须为 100% 纯英文，杜绝任何中文字符', () => {
+    const engine = new PromptAdapterEngine();
+    const prompts = engine.generateAllPrompts(baseShot, mockCharacters, '9:16');
+
+    // 严禁包含任何中文 (CJK 统一表意文字)
+    const chineseRegex = /[\u4e00-\u9fa5]/;
+    assert.ok(!chineseRegex.test(prompts.midjourney), `Midjourney 提示词包含中文字符: ${prompts.midjourney}`);
+    assert.ok(!chineseRegex.test(prompts.flux), `Flux 提示词包含中文字符: ${prompts.flux}`);
+
+    // 测试空镜头生图
+    const emptyShot: StoryboardShot = {
+      ...baseShot,
+      characterIds: [],
+      characterAction: '狂风骤雨席卷空荡的落地窗，顾北辰冷笑',
+      environmentLighting: '闪电划破黑夜，蓝白色刺目冷光，百叶窗阴影'
+    };
+    const emptyPrompts = engine.generateAllPrompts(emptyShot, mockCharacters, '16:9');
+    assert.ok(!chineseRegex.test(emptyPrompts.midjourney), `Midjourney 空镜提示词包含中文字符: ${emptyPrompts.midjourney}`);
+    assert.ok(!chineseRegex.test(emptyPrompts.flux), `Flux 空镜提示词包含中文字符: ${emptyPrompts.flux}`);
+
+    // 即梦保持包含中文
+    assert.ok(chineseRegex.test(prompts.jimeng), '即梦应保留中文/双语内容');
+  });
 });

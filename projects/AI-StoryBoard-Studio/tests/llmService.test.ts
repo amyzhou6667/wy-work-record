@@ -90,7 +90,10 @@ describe('LLMStoryboardService (大模型智能分镜服务引擎)', () => {
     });
 
     assert.ok(refined.characterAction.includes('润色指令: 改为低角度仰拍'));
-    assert.ok(refined.prompts.midjourney.includes('instruction: 改为低角度仰拍'));
+    assert.ok(refined.prompts.midjourney.includes('instruction:'), 'MJ 提示词应包含 instruction 前缀');
+    assert.ok(!/[\u4e00-\u9fa5]/.test(refined.prompts.midjourney), 'MJ 提示词绝无中文字符');
+    assert.ok(!/[\u4e00-\u9fa5]/.test(refined.prompts.flux), 'Flux 提示词绝无中文字符');
+    assert.ok(refined.prompts.jimeng.includes('改为低角度仰拍'), '即梦提示词保留中文润色指令');
   });
 
   test('TC-LLM-04: 当大模型返回的分镜缺少 prompts 字段时，必须自动补齐完整三模型提示词', async () => {
@@ -115,6 +118,8 @@ describe('LLMStoryboardService (大模型智能分镜服务引擎)', () => {
     // 断言必须自动补齐，绝对不可为空字符串
     assert.ok(shot.prompts.midjourney.length > 10, 'Midjourney 提示词必须自动补全且非空');
     assert.ok(shot.prompts.midjourney.includes('--ar 9:16'), 'MJ 提示词应包含正确的画幅参数');
+    assert.ok(!/[\u4e00-\u9fa5]/.test(shot.prompts.midjourney), 'MJ 提示词绝无中文字符');
+    assert.ok(!/[\u4e00-\u9fa5]/.test(shot.prompts.flux), 'Flux 提示词绝无中文字符');
     assert.ok(shot.prompts.flux.length > 10, 'Flux 提示词必须自动补全且非空');
     assert.ok(shot.prompts.jimeng.length > 5, '即梦提示词必须自动补全且非空');
   });

@@ -38,8 +38,8 @@ export class LLMStoryboardService {
 ${charList}
 若镜头出现上述角色，必须将其英文外貌特征融入 Midjourney 和 Flux 提示词中。
 6. 生图提示词规范 (画幅: ${aspectRatio}):
-   - midjourney: 英文格式，包含景别运镜、角色外貌动作、环境光影、8k photorealistic, --ar ${aspectRatio} --v 6.1 --style raw
-   - flux: 英文 35mm 电影长文胶片描述
+   - midjourney: 必须 100% 纯英文提示词（绝对严禁包含任何中文字符与全角标点），包含景别运镜、角色外貌动作、环境光影、8k photorealistic, --ar ${aspectRatio} --v 6.1 --style raw
+   - flux: 必须 100% 纯英文 35mm 电影长文胶片描述（绝对严禁包含任何中文字符与全角标点）
    - jimeng: 针对即梦或国产模型的精炼双语描述
 
 【输出格式强制要求】：
@@ -159,9 +159,20 @@ ${charList}
       // 自动使用 PromptAdapterEngine 进行专业三模型提示词保底生成
       const autoPrompts = promptEngine.generateAllPrompts(baseShot, characters, aspectRatio);
 
+      const rawMj = (item.prompts?.midjourney || item.midjourney || '').trim();
+      const rawFlux = (item.prompts?.flux || item.flux || '').trim();
+
+      const mjClean = rawMj && !/[\u4e00-\u9fa5]/.test(rawMj)
+        ? promptEngine.sanitizeToPureEnglish(rawMj)
+        : autoPrompts.midjourney;
+
+      const fluxClean = rawFlux && !/[\u4e00-\u9fa5]/.test(rawFlux)
+        ? promptEngine.sanitizeToPureEnglish(rawFlux)
+        : autoPrompts.flux;
+
       baseShot.prompts = {
-        midjourney: (item.prompts?.midjourney || item.midjourney || '').trim() || autoPrompts.midjourney,
-        flux: (item.prompts?.flux || item.flux || '').trim() || autoPrompts.flux,
+        midjourney: mjClean,
+        flux: fluxClean,
         jimeng: (item.prompts?.jimeng || item.jimeng || '').trim() || autoPrompts.jimeng
       };
 
@@ -239,13 +250,22 @@ ${charList}
   public async refineShot(req: AIRefineShotRequest): Promise<StoryboardShot> {
     const { shot, userInstruction, characters, aspectRatio, llmConfig } = req;
     if (!llmConfig || !llmConfig.baseUrl || !llmConfig.model) {
-      // 离线快速润色微调
+      // 离线快速润色微调 (确保 midjourney 和 flux 为纯英文)
+      const refinedAction = `${shot.characterAction} (润色指令: ${userInstruction})`;
+      const enInstruction = promptEngine.translateActionToEnglish(userInstruction);
+      const autoPrompts = promptEngine.generateAllPrompts(
+        { ...shot, characterAction: refinedAction },
+        characters,
+        aspectRatio
+      );
+
       return {
         ...shot,
-        characterAction: `${shot.characterAction} (润色指令: ${userInstruction})`,
+        characterAction: refinedAction,
         prompts: {
-          ...shot.prompts,
-          midjourney: `${shot.prompts.midjourney}, instruction: ${userInstruction}`
+          midjourney: `${shot.prompts.midjourney || autoPrompts.midjourney}, instruction: ${enInstruction}`,
+          flux: autoPrompts.flux,
+          jimeng: `${shot.prompts.jimeng || autoPrompts.jimeng} | [润色指令]: ${userInstruction}`
         }
       };
     }
@@ -294,9 +314,15 @@ ${JSON.stringify(shot, null, 2)}
           };
           // 自动补齐提示词
           const autoPrompts = promptEngine.generateAllPrompts(refinedShot, characters, aspectRatio);
+          const rawMj = (parsed.prompts?.midjourney || '').trim();
+          const rawFlux = (parsed.prompts?.flux || '').trim();
           refinedShot.prompts = {
-            midjourney: (parsed.prompts?.midjourney || '').trim() || autoPrompts.midjourney,
-            flux: (parsed.prompts?.flux || '').trim() || autoPrompts.flux,
+            midjourney: rawMj && !/[\u4e00-\u9fa5]/.test(rawMj)
+              ? promptEngine.sanitizeToPureEnglish(rawMj)
+              : autoPrompts.midjourney,
+            flux: rawFlux && !/[\u4e00-\u9fa5]/.test(rawFlux)
+              ? promptEngine.sanitizeToPureEnglish(rawFlux)
+              : autoPrompts.flux,
             jimeng: (parsed.prompts?.jimeng || '').trim() || autoPrompts.jimeng
           };
           return refinedShot;

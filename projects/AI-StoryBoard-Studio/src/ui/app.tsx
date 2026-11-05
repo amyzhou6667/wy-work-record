@@ -337,11 +337,20 @@ function App() {
         ? '电影主光侧打，明暗对比立体，高光与阴影过渡柔和'
         : '环境漫反射自然柔光，边缘轮廓光勾勒角色轮廓';
 
-      const mj = activeChars.length > 0
-        ? `${shotSize}, ${cameraMovement}, ${charPrompt}, acting: ${characterAction}, 8k, cinematic lighting, photorealistic ${arParam} --v 6.1 --style raw`
-        : `Cinematic wide shot, ${cameraMovement}, scene action: ${characterAction}, atmospheric volumetrics, 8k ${arParam} --v 6.1 --style raw`;
+      // 纯英文动作与光影推导 (杜绝中文字符渗入 MJ 与 Flux)
+      const enAction = hasDialogue
+        ? 'intense focused emotional performance, dramatic eye contact, subtle tension'
+        : 'dynamic cinematic composition, building profound emotional climax and atmospheric suspense';
 
-      const flux = `A high quality 35mm cinematic film still in vertical ${ar} composition. Utilizing ${shotSize} and ${cameraMovement}. ${charPrompt ? `Featuring ${charPrompt}.` : ''} Action: ${characterAction}. Rich depth of field, ultra-detailed textures.`;
+      const enLighting = i % 2 === 0
+        ? 'three-point cinematic lighting with soft edge rim highlights and high contrast shadows'
+        : 'atmospheric diffused ambient illumination, gentle volumetric haze';
+
+      const mj = activeChars.length > 0
+        ? `${shotSize}, ${cameraMovement}, ${charPrompt || 'cinematic portrait'}, acting: ${enAction}, environment and lighting: ${enLighting}, cinematic lighting, film grain, photorealistic, 8k, masterpiece ${arParam} --v 6.1 --style raw`
+        : `Cinematic wide shot, ${cameraMovement}, scene action: ${enAction}, environment and lighting: ${enLighting}, atmospheric volumetrics, 8k, masterpiece ${arParam} --v 6.1 --style raw`;
+
+      const flux = `A high quality, photorealistic 35mm film still captured in cinematic vertical ${ar} framing. The camera utilizes an ${shotSize} with ${cameraMovement}. ${charPrompt ? `Featuring ${charPrompt}, engaged in: ${enAction}.` : `The scene showcases ${enAction}.`} The ambient environment and light source is styled with ${enLighting}. Ultra-detailed facial textures, natural catchlights in pupils, atmospheric volumetrics, professional color grading, cinematic motion picture look.`;
 
       const jimeng = `${ar === '9:16' ? '9:16竖屏短剧构图' : '16:9横屏电影画幅'} | ${shotSize} | ${cameraMovement} | ${speaker ? `角色:${speaker}` : '场景氛围'} | 8K电影级质感胶片细节`;
 
