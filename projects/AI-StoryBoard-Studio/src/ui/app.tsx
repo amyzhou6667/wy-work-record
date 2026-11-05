@@ -1101,33 +1101,102 @@ function App() {
                       暂无改编场次，点击【⚡ 重新改编剧本】或在顶部运行全流水线
                     </div>
                   ) : (
-                    scriptScenes.map((sc, sIdx) => (
-                      <div key={sc.sceneNumber || sIdx} className="p-4 bg-slate-950 rounded-xl border border-slate-800 space-y-3">
-                        <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                          <span className="font-bold text-xs text-indigo-400">
-                            第 {sc.sceneNumber} 场 · {sc.location} ({sc.time})
-                          </span>
-                          <Tag color="cyan" className="text-[11px] m-0">{sc.atmosphere}</Tag>
-                        </div>
-                        <div className="space-y-2 text-xs">
-                          {sc.paragraphs?.map((p, pIdx) => (
-                            <div key={pIdx} className="leading-relaxed">
-                              {p.speaker ? (
-                                <div className="bg-slate-900/60 p-2 rounded border border-slate-800/80">
-                                  <span className="font-bold text-indigo-400">【{p.speaker}】</span>
-                                  {p.action && <span className="text-slate-400 text-[11px]">（{p.action}）</span>}
-                                  <span className="text-slate-200">：“{p.text}”</span>
-                                </div>
-                              ) : (
-                                <div className="text-slate-400 italic pl-2 border-l-2 border-slate-700">
-                                  {p.text}
-                                </div>
-                              )}
+                    scriptScenes.map((sc, sIdx) => {
+                      const sceneTime = sc.timeOfDay || sc.time || 'DAY';
+                      const actionDesc = (sc.actionDescription || sc.action || sc.description || sc.content || '').trim();
+                      const rawDialogues = sc.dialogues || sc.dialogue || sc.lines || [];
+                      const dialoguesList = Array.isArray(rawDialogues) ? rawDialogues : [];
+
+                      return (
+                        <div key={sc.sceneNumber || sIdx} className="p-4 bg-slate-950 rounded-xl border border-slate-800 space-y-3">
+                          {/* 场次标题条 */}
+                          <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-xs text-indigo-400 bg-indigo-950/60 border border-indigo-800/60 px-2 py-0.5 rounded">
+                                第 {sc.sceneNumber || sIdx + 1} 场
+                              </span>
+                              <span className="font-semibold text-xs text-slate-200">
+                                {sc.location || '场景'}
+                              </span>
+                              <span className="text-[11px] text-slate-400 font-mono">
+                                ({sceneTime})
+                              </span>
                             </div>
-                          ))}
+                            {sc.atmosphere && (
+                              <Tag color="cyan" className="text-[11px] m-0">
+                                {sc.atmosphere}
+                              </Tag>
+                            )}
+                          </div>
+
+                          {/* 场景正文：动作与环境视觉描写 */}
+                          {actionDesc && (
+                            <div className="p-3 bg-slate-900/60 rounded-lg border border-slate-800/80 text-xs text-slate-300 leading-relaxed space-y-1">
+                              <div className="flex items-center gap-1.5 text-indigo-400 font-semibold text-[11px]">
+                                <span>🎬</span>
+                                <span>【动作与场景】</span>
+                              </div>
+                              <p className="m-0 pl-4 text-slate-300 italic whitespace-pre-wrap font-sans">
+                                {actionDesc}
+                              </p>
+                            </div>
+                          )}
+
+                          {/* 角色台词对白列表 */}
+                          {dialoguesList.length > 0 && (
+                            <div className="space-y-2 text-xs pt-1">
+                              <div className="text-[11px] text-slate-500 font-semibold px-1">
+                                💬 角色对白 ({dialoguesList.length})：
+                              </div>
+                              {dialoguesList.map((d, dIdx) => {
+                                const speaker = d.speaker || d.character || d.name;
+                                const text = d.text || d.content || d.dialogue || d.line;
+                                const emotion = d.emotion || d.tone;
+                                const isVO = d.isVoiceover || d.voiceover;
+
+                                return (
+                                  <div key={dIdx} className="leading-relaxed">
+                                    {speaker ? (
+                                      <div className="bg-slate-900/70 p-2.5 rounded-lg border border-slate-800/80 flex flex-col gap-1 hover:border-slate-700 transition">
+                                        <div className="flex items-center gap-2">
+                                          <span className="font-bold text-indigo-300 text-xs">
+                                            【{speaker}】
+                                          </span>
+                                          {emotion && (
+                                            <Tag color="purple" className="text-[10px] m-0 px-1 py-0 leading-tight">
+                                              {emotion}
+                                            </Tag>
+                                          )}
+                                          {isVO && (
+                                            <Tag color="gold" className="text-[10px] m-0 px-1 py-0 leading-tight">
+                                              旁白/独白
+                                            </Tag>
+                                          )}
+                                        </div>
+                                        <div className="text-slate-200 text-xs pl-2 border-l-2 border-indigo-500/50">
+                                          “{text}”
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      <div className="text-slate-400 italic pl-3 border-l-2 border-slate-700 py-1 text-xs">
+                                        {text}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {/* 容错提示 */}
+                          {!actionDesc && dialoguesList.length === 0 && (
+                            <div className="text-xs text-slate-500 italic p-2">
+                              （本场暂无动作描写与对白内容）
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               )}

@@ -1,8 +1,54 @@
-import type { AgentPluginConfig, PipelineStage, ScriptScene, WorkflowPipelineContext } from '../../types/index.ts';
+import type { AgentPluginConfig, PipelineStage, ScriptScene, ScriptDialogue, WorkflowPipelineContext } from '../../types/index.ts';
 
 export class ScriptwriterAgent {
   public readonly stage: PipelineStage = 'script';
   public readonly defaultName: string = '剧本改编 Agent';
+
+  /**
+   * 标准化与容错处理大模型返回的场次数据
+   */
+  public normalizeScenes(rawItems: any[]): ScriptScene[] {
+    if (!Array.isArray(rawItems)) return [];
+
+    return rawItems.map((item: any, idx: number) => {
+      // 容错提取对白列表 (兼容 dialogues / dialogue / lines / conversations / paragraphs)
+      const rawDialogues = item.dialogues || item.dialogue || item.lines || item.conversations || item.paragraphs || [];
+      const dialogues: ScriptDialogue[] = Array.isArray(rawDialogues)
+        ? rawDialogues.map((d: any) => ({
+            speaker: d.speaker || d.character || d.name || d.role || '角色',
+            emotion: d.emotion || d.tone || d.mood || '沉着',
+            text: d.text || d.content || d.dialogue || d.line || '',
+            isVoiceover: !!(d.isVoiceover || d.voiceover || d.isVo || d.is_voiceover)
+          })).filter(d => d.text.trim().length > 0)
+        : [];
+
+      // 容错提取动作与环境描写 (兼容 actionDescription / action / description / sceneDescription / content / summary)
+      const actionDesc = (
+        item.actionDescription ||
+        item.action ||
+        item.description ||
+        item.sceneDescription ||
+        item.content ||
+        item.summary ||
+        ''
+      ).trim();
+
+      // 容错提取场景地点与时间
+      const location = (item.location || item.scene || item.setting || item.place || '内景 - 主场景').trim();
+      const rawTime = (item.timeOfDay || item.time || item.time_of_day || 'DAY').toUpperCase();
+      const timeOfDay = (['DAY', 'NIGHT', 'DUSK', 'DAWN'].includes(rawTime) ? rawTime : 'DAY') as any;
+      const atmosphere = (item.atmosphere || item.mood || item.tone || '戏剧冲突').trim();
+
+      return {
+        sceneNumber: typeof item.sceneNumber === 'number' ? item.sceneNumber : idx + 1,
+        location,
+        timeOfDay,
+        atmosphere,
+        actionDescription: actionDesc || (dialogues.length > 0 ? '角色出镜对峙，环境氛围暗涌。' : '场景镜头视听呈现。'),
+        dialogues
+      };
+    });
+  }
 
   public async execute(
     novelText: string,
@@ -15,19 +61,28 @@ export class ScriptwriterAgent {
 【小说文本】
 ${novelText}
 
-请直接输出标准 JSON 格式，严禁返回任何多余解释：
+【重要格式规范】：
+必须输出标准 JSON 数组，严禁返回任何多余解释。每个场次必须包含：
+- sceneNumber: 场次序号 (数字)
+- location: 场景地点，如 "外景 - 江边" 或 "内景 - 总裁办公室"
+- timeOfDay: 拍摄时间 ("DAY" 或 "NIGHT" 或 "DUSK" 或 "DAWN")
+- atmosphere: 影视氛围，如 "阴郁压抑" 或 "剑拔弩张"
+- actionDescription: 该场次的详细动作描写、人物神态与镜头视觉环境（绝不可为空）
+- dialogues: 角色对白列表数组，每句包含 speaker (角色名)、emotion (语气神态)、text (台词正文)、isVoiceover (是否独白/旁白)
+
+范例格式：
 [
   {
     "sceneNumber": 1,
-    "location": "内景 - 地点",
-    "timeOfDay": "DAY 或 NIGHT",
-    "atmosphere": "场景冲突氛围",
-    "actionDescription": "纯视觉化动作与环境描写",
+    "location": "外景 - 江城跨江大桥",
+    "timeOfDay": "DAY",
+    "atmosphere": "黑云压城，剑拔弩张",
+    "actionDescription": "暴雨如注，江面波涛翻滚。数十辆黑色迈巴赫成列封锁大桥，黑色风衣猎猎作响。",
     "dialogues": [
       {
-        "speaker": "说话角色名",
-        "emotion": "情绪语气",
-        "text": "精炼台词对白",
+        "speaker": "顾北辰",
+        "emotion": "眼神如冰，嘴角冷笑",
+        "text": "三年之期已到，江城该变天了。",
         "isVoiceover": false
       }
     ]
@@ -60,14 +115,21 @@ ${novelText}
           const resJson: any = await response.json();
           const choice = resJson.choices?.[0]?.message;
           const content = choice?.content || choice?.reasoning_content || '';
-          const match = content.match(/\[[\s\S]*\]/);
+          let clean = content.trim();
+          const codeBlockMatch = clean.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+          if (codeBlockMatch) clean = codeBlockMatch[1].trim();
+
+          const match = clean.match(/\[[\s\S]*\]/);
           if (match) {
             const parsed = JSON.parse(match[0]);
             if (Array.isArray(parsed) && parsed.length > 0) {
-              return {
-                data: parsed,
-                isFallback: false
-              };
+              const normalized = this.normalizeScenes(parsed);
+              if (normalized.length > 0) {
+                return {
+                  data: normalized,
+                  isFallback: false
+                };
+              }
             }
           }
         }
@@ -86,7 +148,7 @@ ${novelText}
   public fallback(novelText: string, context?: WorkflowPipelineContext): ScriptScene[] {
     const lines = novelText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
     const scenes: ScriptScene[] = [];
-    let currentDialogues: ScriptScene['dialogues'] = [];
+    let currentDialogues: ScriptDialogue[] = [];
     let currentActions: string[] = [];
     let sceneNum = 1;
 

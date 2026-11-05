@@ -264,4 +264,18 @@ describe('AI-StoryBoard-Studio Web API & UI 集成测试', () => {
     assert.ok(appCode.includes('多智能体工坊配置中心'), '弹窗标题必须匹配工坊配置中心');
     assert.ok(appCode.includes('同步主模型至全部 Agent'), '必须支持一键同步主大模型到四大 Agent');
   });
+
+  test('TC-WEB-10: 验证剧本改编视图完整渲染场景正文动作描写与角色对白，杜绝仅标题无正文', () => {
+    const appPath = path.join(__dirname, '../src/ui/app.tsx');
+    const appCode = fs.readFileSync(appPath, 'utf-8');
+
+    // 严禁继续使用早已不存在的 sc.paragraphs
+    assert.ok(!appCode.includes('sc.paragraphs?.map'), '必须移除无对应字段的 sc.paragraphs?.map');
+
+    // 必须渲染场景动作与视觉正文
+    assert.ok(appCode.includes('actionDescription') || appCode.includes('【动作与场景】') || appCode.includes('【场景/动作】'), '必须渲染 actionDescription 正文描述');
+
+    // 必须渲染角色对白列表
+    assert.ok(appCode.includes('dialoguesList') || appCode.includes('sc.dialogues'), '必须循环渲染 dialogues 角色对白列表');
+  });
 });

@@ -65,6 +65,7 @@ describe('Multi-Agent Pluggable Workflow Engine (多智能体可插拔工作流�
     assert.ok(result.data.length >= 1, '应该输出至少一个场次');
     const scene1 = result.data[0];
     assert.ok(scene1.sceneNumber >= 1, '场次序号有效');
+    assert.ok(scene1.actionDescription && scene1.actionDescription.length > 0, '场次动作与环境正文描写必须非空');
     assert.ok(scene1.dialogues.length >= 2, '应该提取出苏清影与顾北辰的对白');
     assert.ok(scene1.dialogues.some(d => d.text.includes('离婚协议')), '对白应包含关键冲突文本');
   });
@@ -179,5 +180,32 @@ describe('Multi-Agent Pluggable Workflow Engine (多智能体可插拔工作流�
     assert.strictEqual(refreshedCtx.shots[0].characterAction, '人工精心润色：顾北辰霸气捏碎高脚杯，碎片漫天飞舞');
     assert.strictEqual(refreshedCtx.dirtyFlags.prompt, false, 'Prompt 阶段脏标记应被清除');
     assert.ok(refreshedCtx.shots[0].prompts.flux.includes('gold embroidery') || refreshedCtx.shots[0].prompts.midjourney.includes('gold embroidery'), 'Prompt 应拉取最新角色服装');
+  });
+
+  test('TC-WF-07: ScriptwriterAgent 能够容错标准化解析异构字段并确保场景正文与对白非空', () => {
+    const agent = new ScriptwriterAgent();
+    const heterogeneousLLMOutput = [
+      {
+        scene: '外景 - 豪门跨海大桥',
+        time: 'DUSK',
+        mood: '风雨欲来',
+        action: '狂风卷集着暴雨，黑色宾利如幽灵般疾驰而过，车轮溅起数米水花。',
+        dialogue: [
+          { character: '顾北辰', tone: '冰冷决绝', line: '回江城。', voiceover: false }
+        ]
+      }
+    ];
+
+    const normalized = (agent as any).normalizeScenes(heterogeneousLLMOutput);
+    assert.strictEqual(normalized.length, 1);
+    const scene = normalized[0];
+    assert.strictEqual(scene.location, '外景 - 豪门跨海大桥');
+    assert.strictEqual(scene.timeOfDay, 'DUSK');
+    assert.strictEqual(scene.atmosphere, '风雨欲来');
+    assert.strictEqual(scene.actionDescription, '狂风卷集着暴雨，黑色宾利如幽灵般疾驰而过，车轮溅起数米水花。');
+    assert.strictEqual(scene.dialogues.length, 1);
+    assert.strictEqual(scene.dialogues[0].speaker, '顾北辰');
+    assert.strictEqual(scene.dialogues[0].text, '回江城。');
+    assert.strictEqual(scene.dialogues[0].emotion, '冰冷决绝');
   });
 });
