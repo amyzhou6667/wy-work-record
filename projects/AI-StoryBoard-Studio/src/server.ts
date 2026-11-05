@@ -86,6 +86,18 @@ export function createRequestHandler() {
         if (body.characters?.length) ctx.characters = body.characters;
         if (body.agentConfigs) ctx.agentConfigs = { ...ctx.agentConfigs, ...body.agentConfigs };
       }
+      // 容错继承：若全局传递了 llmConfig，且部分 agent 未配置 apiKey，自动补齐继承
+      const fallbackLLM = body.llmConfig;
+      if (fallbackLLM && fallbackLLM.apiKey && fallbackLLM.baseUrl) {
+        (['asset', 'script', 'shot', 'prompt'] as const).forEach(st => {
+          if (!ctx.agentConfigs[st]?.llmConfig?.apiKey) {
+            ctx.agentConfigs[st] = {
+              ...ctx.agentConfigs[st],
+              llmConfig: { ...fallbackLLM }
+            };
+          }
+        });
+      }
       const resultCtx = await workflowEngine.runAll(ctx);
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({ code: 0, data: resultCtx }));

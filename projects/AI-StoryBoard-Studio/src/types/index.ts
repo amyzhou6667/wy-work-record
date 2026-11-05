@@ -224,6 +224,7 @@ export interface WorkflowPipelineContext {
   scriptScenes: ScriptScene[];
   shots: StoryboardShot[];
   agentConfigs: Record<PipelineStage, AgentPluginConfig>;
+  executionModes?: Record<PipelineStage, 'llm' | 'offline_fallback' | 'skipped'>;
   lastExecutedAt?: number;
 }
 

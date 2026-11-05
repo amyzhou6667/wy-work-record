@@ -61,6 +61,12 @@ export class WorkflowEngine {
         shot: false,
         prompt: false
       },
+      executionModes: {
+        asset: 'offline_fallback',
+        script: 'offline_fallback',
+        shot: 'offline_fallback',
+        prompt: 'offline_fallback'
+      },
       characters: [],
       scenes: [],
       scriptScenes: [],
@@ -75,6 +81,12 @@ export class WorkflowEngine {
    */
   public async runAll(context: WorkflowPipelineContext): Promise<WorkflowPipelineContext> {
     let ctx = { ...context };
+    ctx.executionModes = ctx.executionModes || {
+      asset: 'offline_fallback',
+      script: 'offline_fallback',
+      shot: 'offline_fallback',
+      prompt: 'offline_fallback'
+    };
 
     // 阶段 1：资产提取
     if (ctx.agentConfigs.asset.enabled) {
@@ -84,8 +96,10 @@ export class WorkflowEngine {
       ctx.scenes = assetRes.data.scenes;
       ctx.stageStatuses.asset = 'ready';
       ctx.dirtyFlags.asset = false;
+      ctx.executionModes.asset = assetRes.isFallback ? 'offline_fallback' : 'llm';
     } else {
       ctx.stageStatuses.asset = 'skipped';
+      ctx.executionModes.asset = 'skipped';
     }
 
     // 阶段 2：剧本改编 (支持跳过直通)
@@ -95,8 +109,10 @@ export class WorkflowEngine {
       ctx.scriptScenes = scriptRes.data;
       ctx.stageStatuses.script = 'ready';
       ctx.dirtyFlags.script = false;
+      ctx.executionModes.script = scriptRes.isFallback ? 'offline_fallback' : 'llm';
     } else {
       ctx.stageStatuses.script = 'skipped';
+      ctx.executionModes.script = 'skipped';
     }
 
     // 阶段 3：镜头切分
@@ -114,8 +130,10 @@ export class WorkflowEngine {
       ctx.shots = shotRes.data;
       ctx.stageStatuses.shot = 'ready';
       ctx.dirtyFlags.shot = false;
+      ctx.executionModes.shot = shotRes.isFallback ? 'offline_fallback' : 'llm';
     } else {
       ctx.stageStatuses.shot = 'skipped';
+      ctx.executionModes.shot = 'skipped';
     }
 
     // 阶段 4：生图 Prompt 生成
@@ -133,8 +151,10 @@ export class WorkflowEngine {
       ctx.shots = promptRes.data;
       ctx.stageStatuses.prompt = 'ready';
       ctx.dirtyFlags.prompt = false;
+      ctx.executionModes.prompt = promptRes.isFallback ? 'offline_fallback' : 'llm';
     } else {
       ctx.stageStatuses.prompt = 'skipped';
+      ctx.executionModes.prompt = 'skipped';
     }
 
     ctx.lastExecutedAt = Date.now();

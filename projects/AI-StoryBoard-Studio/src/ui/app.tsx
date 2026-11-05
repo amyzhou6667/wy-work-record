@@ -161,12 +161,31 @@ function App() {
     shot: false,
     prompt: false
   });
-  const [agentConfigs, setAgentConfigs] = useState(() => {
+  const [executionModes, setExecutionModes] = useState({
+    asset: 'offline_fallback',
+    script: 'offline_fallback',
+    shot: 'offline_fallback',
+    prompt: 'offline_fallback'
+  });
+
+  // 大模型配置状态
+  const [llmConfig, setLlmConfig] = useState(() => {
     try {
-      const saved = localStorage.getItem('asbs_agent_configs');
+      const saved = localStorage.getItem('asbs_llm_config');
       if (saved) return JSON.parse(saved);
     } catch {}
     return {
+      baseUrl: 'https://api.deepseek.com/v1',
+      apiKey: '',
+      model: 'deepseek-chat',
+      temperature: 0.7
+    };
+  });
+
+  const isLLMConfigured = !!(llmConfig && llmConfig.baseUrl && llmConfig.apiKey);
+
+  const [agentConfigs, setAgentConfigs] = useState(() => {
+    let base = {
       asset: {
         id: 'asset',
         name: '资产提取 Agent',
@@ -192,33 +211,49 @@ function App() {
         llmConfig: { baseUrl: 'https://api.deepseek.com/v1', apiKey: '', model: 'deepseek-chat', temperature: 0.7 }
       }
     };
-  });
-  const [scriptScenes, setScriptScenes] = useState([]);
-  const [scenes, setScenes] = useState([]);
-  const [showAgentHubModal, setShowAgentHubModal] = useState(false);
-
-  // 大模型配置状态
-  const [llmConfig, setLlmConfig] = useState(() => {
     try {
-      const saved = localStorage.getItem('asbs_llm_config');
-      if (saved) return JSON.parse(saved);
+      const saved = localStorage.getItem('asbs_agent_configs');
+      if (saved) base = JSON.parse(saved);
     } catch {}
-    return {
-      baseUrl: 'https://api.deepseek.com/v1',
-      apiKey: '',
-      model: 'deepseek-chat',
-      temperature: 0.7
-    };
+    // 自动补齐主大模型 Key
+    try {
+      const savedLLM = localStorage.getItem('asbs_llm_config');
+      if (savedLLM) {
+        const parsed = JSON.parse(savedLLM);
+        if (parsed.apiKey) {
+          ['asset', 'script', 'shot', 'prompt'].forEach(k => {
+            if (!base[k].llmConfig?.apiKey) {
+              base[k].llmConfig = { ...parsed };
+            }
+          });
+        }
+      }
+    } catch {}
+    return base;
   });
-
-  const isLLMConfigured = !!(llmConfig && llmConfig.baseUrl && llmConfig.apiKey);
 
   const saveLLMConfig = (newConfig) => {
     setLlmConfig(newConfig);
     try {
       localStorage.setItem('asbs_llm_config', JSON.stringify(newConfig));
     } catch {}
+    // 自动联动更新所有 Agent 配置
+    const synced = { ...agentConfigs };
+    ['asset', 'script', 'shot', 'prompt'].forEach(k => {
+      synced[k] = {
+        ...synced[k],
+        llmConfig: { ...newConfig }
+      };
+    });
+    setAgentConfigs(synced);
+    try {
+      localStorage.setItem('asbs_agent_configs', JSON.stringify(synced));
+    } catch {}
   };
+
+  const [scriptScenes, setScriptScenes] = useState([]);
+  const [scenes, setScenes] = useState([]);
+  const [showAgentHubModal, setShowAgentHubModal] = useState(false);
 
   // 通用离线高容错分镜生成器
   const generateOfflineShots = (text, currentChars, ar) => {
@@ -341,6 +376,17 @@ function App() {
     setIsLoading(true);
     setLoadingTip('正在通过可插拔多智能体工作流（资产提取 ➔ 剧本改编 ➔ 镜头切分 ➔ 生图Prompt）协同推进...');
 
+    // 动态补齐未设置 key 的 Agent 配置
+    const effectiveConfigs = { ...agentConfigs };
+    ['asset', 'script', 'shot', 'prompt'].forEach(k => {
+      if ((!effectiveConfigs[k]?.llmConfig?.apiKey || !effectiveConfigs[k]?.llmConfig?.baseUrl) && llmConfig?.apiKey) {
+        effectiveConfigs[k] = {
+          ...effectiveConfigs[k],
+          llmConfig: { ...llmConfig }
+        };
+      }
+    });
+
     try {
       const response = await fetch('/api/v1/workflow/run-all', {
         method: 'POST',
@@ -349,7 +395,8 @@ function App() {
           novelText,
           aspectRatio,
           characters,
-          agentConfigs
+          agentConfigs: effectiveConfigs,
+          llmConfig
         })
       });
 
@@ -364,8 +411,15 @@ function App() {
         setShots(d.shots);
         setStageStatuses(d.stageStatuses || { asset: 'ready', script: 'ready', shot: 'ready', prompt: 'ready' });
         setDirtyFlags({ asset: false, script: false, shot: false, prompt: false });
+        if (d.executionModes) setExecutionModes(d.executionModes);
         setSelectedShotIndex(0);
-        message.success('🎬 多智能体工作流全线执行完成，分镜与 Prompt 已就绪！');
+
+        const hasOffline = Object.entries(d.executionModes || {}).some(([k, v]) => v === 'offline_fallback' && effectiveConfigs[k]?.enabled);
+        if (hasOffline) {
+          message.warning('提示：当前由于未配置有效 API Key，部分或全部阶段已由本地离线规则极速生成。若需深度好莱坞大模型智能创作，请点击【⚙️ AI 模型配置】填入 API Key！', 6);
+        } else {
+          message.success('🎬 4 大 Agent 已全量由大模型智能执行完毕，视听分镜已就绪！', 4);
+        }
       } else {
         throw new Error('未返回有效镜头数据');
       }
@@ -375,6 +429,7 @@ function App() {
       setShots(offlineShots);
       setSelectedShotIndex(0);
       setStageStatuses({ asset: 'ready', script: 'ready', shot: 'ready', prompt: 'ready' });
+      setExecutionModes({ asset: 'offline_fallback', script: 'offline_fallback', shot: 'offline_fallback', prompt: 'offline_fallback' });
       Modal.info({
         title: '分镜生成提示',
         content: `大模型请求异常（${err.message || '网络超时'}），已自动启用高容错离线规则为您拆解分镜与生成 Prompt！`
@@ -741,7 +796,13 @@ function App() {
                     <div>
                       <div className="flex items-center gap-1.5 font-semibold text-[11px]">
                         <span>{node.name}</span>
-                        {!isAgentEnabled && <Tag color="default" className="text-[9px] m-0 px-1 py-0">跳过</Tag>}
+                        {!isAgentEnabled ? (
+                          <Tag color="default" className="text-[9px] m-0 px-1 py-0">跳过</Tag>
+                        ) : executionModes[node.id] === 'llm' ? (
+                          <Tag color="success" className="text-[9px] m-0 px-1 py-0 border-emerald-500/30 text-emerald-400">🤖 大模型</Tag>
+                        ) : (
+                          <Tag color="default" className="text-[9px] m-0 px-1 py-0 text-slate-500">⚡ 离线规则</Tag>
+                        )}
                         {isDirty && <Tag color="warning" className="text-[9px] m-0 px-1 py-0">已变更</Tag>}
                       </div>
                       <div className="text-[10px] text-slate-400 font-mono">{node.desc}</div>
