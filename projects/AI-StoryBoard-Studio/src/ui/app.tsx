@@ -13,7 +13,8 @@ const {
   Dropdown,
   ConfigProvider,
   theme,
-  message
+  message,
+  Switch
 } = antd;
 
 /**
@@ -144,6 +145,56 @@ function App() {
   const [refineTargetShot, setRefineTargetShot] = useState(null);
   const [refineInstruction, setRefineInstruction] = useState('');
   const [exportType, setExportType] = useState('srt');
+
+  // 工作流多智能体状态 (4 大可插拔 Agent)
+  const [activeStage, setActiveStage] = useState('shot'); // 'asset' | 'script' | 'shot' | 'prompt'
+  const [stageStatuses, setStageStatuses] = useState({
+    asset: 'ready',
+    script: 'ready',
+    shot: 'ready',
+    prompt: 'ready'
+  });
+  const [dirtyFlags, setDirtyFlags] = useState({
+    asset: false,
+    script: false,
+    shot: false,
+    prompt: false
+  });
+  const [agentConfigs, setAgentConfigs] = useState(() => {
+    try {
+      const saved = localStorage.getItem('asbs_agent_configs');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return {
+      asset: {
+        id: 'asset',
+        name: '资产提取 Agent',
+        enabled: true,
+        llmConfig: { baseUrl: 'https://api.deepseek.com/v1', apiKey: '', model: 'deepseek-chat', temperature: 0.7 }
+      },
+      script: {
+        id: 'script',
+        name: '剧本改编 Agent',
+        enabled: true,
+        llmConfig: { baseUrl: 'https://api.deepseek.com/v1', apiKey: '', model: 'deepseek-chat', temperature: 0.7 }
+      },
+      shot: {
+        id: 'shot',
+        name: '镜头切分 Agent',
+        enabled: true,
+        llmConfig: { baseUrl: 'https://api.deepseek.com/v1', apiKey: '', model: 'deepseek-chat', temperature: 0.7 }
+      },
+      prompt: {
+        id: 'prompt',
+        name: '生图 Prompt Agent',
+        enabled: true,
+        llmConfig: { baseUrl: 'https://api.deepseek.com/v1', apiKey: '', model: 'deepseek-chat', temperature: 0.7 }
+      }
+    };
+  });
+  const [scriptScenes, setScriptScenes] = useState([]);
+  const [scenes, setScenes] = useState([]);
+  const [showAgentHubModal, setShowAgentHubModal] = useState(false);
 
   // 大模型配置状态
   const [llmConfig, setLlmConfig] = useState(() => {
@@ -279,7 +330,7 @@ function App() {
     }
   }, []);
 
-  // 执行 AI 智能拆解
+  // 执行 AI 智能拆解 (通过多智能体工作流)
   const handleAIDecompose = async () => {
     if (!novelText.trim()) {
       Modal.warning({ title: '提示', content: '请先输入小说剧本文本！' });
@@ -287,19 +338,17 @@ function App() {
     }
 
     setIsLoading(true);
-    setLoadingTip(isLLMConfigured
-      ? `好莱坞导演 AI (${llmConfig.model}) 正在深度解构剧本与生成生图 Prompt...`
-      : '正在通过离线智能引擎进行分镜视听结构拆解...');
+    setLoadingTip('正在通过可插拔多智能体工作流（资产提取 ➔ 剧本改编 ➔ 镜头切分 ➔ 生图Prompt）协同推进...');
 
     try {
-      const response = await fetch('/api/v1/ai-decompose', {
+      const response = await fetch('/api/v1/workflow/run-all', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           novelText,
           aspectRatio,
           characters,
-          llmConfig
+          agentConfigs
         })
       });
 
@@ -307,21 +356,112 @@ function App() {
       const res = await response.json();
 
       if (res.code === 0 && res.data && res.data.shots?.length > 0) {
-        setShots(res.data.shots);
+        const d = res.data;
+        if (d.characters?.length) setCharacters(d.characters);
+        if (d.scenes?.length) setScenes(d.scenes);
+        if (d.scriptScenes?.length) setScriptScenes(d.scriptScenes);
+        setShots(d.shots);
+        setStageStatuses(d.stageStatuses || { asset: 'ready', script: 'ready', shot: 'ready', prompt: 'ready' });
+        setDirtyFlags({ asset: false, script: false, shot: false, prompt: false });
         setSelectedShotIndex(0);
-        message.success('🎬 分镜拆解与生图 Prompt 生成完成！');
+        message.success('🎬 多智能体工作流全线执行完成，分镜与 Prompt 已就绪！');
       } else {
         throw new Error('未返回有效镜头数据');
       }
     } catch (err) {
-      console.warn('AI 拆解失败，转为离线智能算法:', err);
+      console.warn('工作流执行失败，转为离线智能算法:', err);
       const offlineShots = generateOfflineShots(novelText, characters, aspectRatio);
       setShots(offlineShots);
       setSelectedShotIndex(0);
+      setStageStatuses({ asset: 'ready', script: 'ready', shot: 'ready', prompt: 'ready' });
       Modal.info({
         title: '分镜生成提示',
         content: `大模型请求异常（${err.message || '网络超时'}），已自动启用高容错离线规则为您拆解分镜与生成 Prompt！`
       });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // 单节点独立运行
+  const runWorkflowStage = async (stage) => {
+    setIsLoading(true);
+    const stageName = agentConfigs[stage]?.name || stage;
+    setLoadingTip(`正在独立运行 ${stageName}...`);
+
+    try {
+      const currentCtx = {
+        novelText,
+        aspectRatio,
+        characters,
+        scenes,
+        scriptScenes,
+        shots,
+        agentConfigs,
+        stageStatuses,
+        dirtyFlags
+      };
+
+      const res = await fetch('/api/v1/workflow/run-stage', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ stage, context: currentCtx })
+      });
+
+      if (!res.ok) throw new Error(`HTTP 错误 ${res.status}`);
+      const json = await res.json();
+
+      if (json.code === 0 && json.data) {
+        const d = json.data;
+        if (d.characters?.length) setCharacters(d.characters);
+        if (d.scenes?.length) setScenes(d.scenes);
+        if (d.scriptScenes?.length) setScriptScenes(d.scriptScenes);
+        if (d.shots?.length) setShots(d.shots);
+        setStageStatuses(d.stageStatuses);
+        setDirtyFlags(d.dirtyFlags);
+        message.success(`✓ ${stageName} 运行完成！`);
+      }
+    } catch (err) {
+      message.error(`运行失败: ${err.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // 增量重跑 Prompt 阶段 (保护镜头动作对白)
+  const runIncrementalPrompts = async () => {
+    setIsLoading(true);
+    setLoadingTip('正在基于最新资产增量刷新生图 Prompt (保留精修镜头动作)...');
+
+    try {
+      const currentCtx = {
+        novelText,
+        aspectRatio,
+        characters,
+        scenes,
+        scriptScenes,
+        shots,
+        agentConfigs,
+        stageStatuses,
+        dirtyFlags
+      };
+
+      const res = await fetch('/api/v1/workflow/incremental-prompts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ context: currentCtx })
+      });
+
+      if (!res.ok) throw new Error(`HTTP 错误 ${res.status}`);
+      const json = await res.json();
+
+      if (json.code === 0 && json.data) {
+        setShots(json.data.shots);
+        setDirtyFlags({ ...dirtyFlags, prompt: false });
+        message.success('✓ 生图 Prompt 增量更新完成！');
+      }
+    } catch (err) {
+      message.error(`更新失败: ${err.message}`);
     } finally {
       setIsLoading(false);
     }
@@ -558,6 +698,88 @@ function App() {
           </Space>
         </header>
 
+        {/* 多智能体可插拔工作流流水线看板 (Pipeline Stepper) */}
+        <div className="flex-none bg-slate-900/90 border-b border-slate-800 px-6 py-2 flex items-center justify-between shadow-sm">
+          <div className="flex items-center gap-2">
+            {[
+              { id: 'asset', num: 1, name: '资产提取 Agent', desc: `${characters.length}人 / ${scenes.length}景` },
+              { id: 'script', num: 2, name: '剧本改编 Agent', desc: `${scriptScenes.length}场` },
+              { id: 'shot', num: 3, name: '镜头切分 Agent', desc: `${shots.length}镜` },
+              { id: 'prompt', num: 4, name: '生图 Prompt Agent', desc: '三模型' }
+            ].map((node, i) => {
+              const isSelected = activeStage === node.id;
+              const isDirty = dirtyFlags[node.id];
+              const isAgentEnabled = agentConfigs[node.id]?.enabled;
+              return (
+                <React.Fragment key={node.id}>
+                  {i > 0 && <span className="text-slate-600 text-xs font-mono select-none">➔</span>}
+                  <div
+                    onClick={() => setActiveStage(node.id)}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border cursor-pointer transition text-xs ${
+                      isSelected
+                        ? 'bg-indigo-950/70 border-indigo-500 text-white shadow-sm ring-1 ring-indigo-500/50'
+                        : isDirty
+                        ? 'bg-amber-950/30 border-amber-600/50 text-amber-200'
+                        : 'bg-slate-950/60 border-slate-800 hover:border-slate-700 text-slate-300'
+                    }`}
+                  >
+                    <span className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-[11px] ${
+                      isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400'
+                    }`}>
+                      {node.num}
+                    </span>
+                    <div>
+                      <div className="flex items-center gap-1.5 font-semibold text-[11px]">
+                        <span>{node.name}</span>
+                        {!isAgentEnabled && <Tag color="default" className="text-[9px] m-0 px-1 py-0">跳过</Tag>}
+                        {isDirty && <Tag color="warning" className="text-[9px] m-0 px-1 py-0">已变更</Tag>}
+                      </div>
+                      <div className="text-[10px] text-slate-400 font-mono">{node.desc}</div>
+                    </div>
+                  </div>
+                </React.Fragment>
+              );
+            })}
+          </div>
+
+          <Space size="small">
+            <Button
+              type="primary"
+              size="small"
+              onClick={handleAIDecompose}
+              loading={isLoading}
+              style={{ backgroundColor: '#6366f1', borderColor: '#4f46e5', fontWeight: 'bold' }}
+            >
+              ⚡ 启动全流水线
+            </Button>
+            <Button
+              size="small"
+              onClick={() => runWorkflowStage(activeStage)}
+              loading={isLoading}
+              className="bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700 text-xs"
+            >
+              ▶ 独立运行本阶段
+            </Button>
+            {dirtyFlags.prompt && (
+              <Button
+                size="small"
+                onClick={runIncrementalPrompts}
+                loading={isLoading}
+                className="bg-amber-950/60 text-amber-300 border-amber-500/50 hover:bg-amber-900/60 text-xs animate-pulse font-bold"
+              >
+                ⚠️ 增量更新 Prompt
+              </Button>
+            )}
+            <Button
+              size="small"
+              onClick={() => setShowAgentHubModal(true)}
+              className="bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700 text-xs"
+            >
+              🧩 Agent 工坊配置
+            </Button>
+          </Space>
+        </div>
+
         {/* 主体【双栏聚焦工作区】：左栏剧本拆解与段落 / 右侧主栏影视级视觉分镜流 (生图 Prompt 弹窗化) */}
         <main className="flex-1 flex overflow-hidden p-3 gap-3">
           {/* 左栏 (32% 宽度)：小说剧本输入与控制区 */}
@@ -668,8 +890,42 @@ function App() {
 
           {/* 右侧主栏 (flex-1 宽度全展开)：影视级分镜瀑布流卡片 */}
           <section className="flex-1 flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
-            <div className="px-4 py-2.5 border-b border-slate-800 flex items-center justify-between bg-slate-900/90">
-              <div className="flex items-center gap-2">
+            <div className="px-4 py-2 border-b border-slate-800 flex items-center justify-between bg-slate-900/90">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800">
+                  <button
+                    onClick={() => setActiveStage('shot')}
+                    className={`px-2.5 py-1 text-xs font-bold rounded transition ${
+                      activeStage === 'shot' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    🎬 分镜流 ({shots.length})
+                  </button>
+                  <button
+                    onClick={() => setActiveStage('asset')}
+                    className={`px-2.5 py-1 text-xs font-bold rounded transition ${
+                      activeStage === 'asset' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    👤 资产库 ({characters.length}人/{scenes.length}景)
+                  </button>
+                  <button
+                    onClick={() => setActiveStage('script')}
+                    className={`px-2.5 py-1 text-xs font-bold rounded transition ${
+                      activeStage === 'script' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    📜 剧本 ({scriptScenes.length}场)
+                  </button>
+                  <button
+                    onClick={() => setActiveStage('prompt')}
+                    className={`px-2.5 py-1 text-xs font-bold rounded transition ${
+                      activeStage === 'prompt' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    🎨 生图 Prompt 视窗
+                  </button>
+                </div>
                 <span className="text-xs font-bold text-slate-200">🎬 工业级视觉分镜流</span>
                 <Tag color="indigo" className="font-semibold text-[11px] m-0 border-indigo-500/30">
                   共 {shots.length} 镜 / 约 {Math.round(shots.reduce((acc, s) => acc + (s.durationSec || 2.5), 0))} 秒
@@ -691,19 +947,145 @@ function App() {
             </div>
 
             <div className="flex-1 p-3 overflow-y-auto space-y-3">
-              {shots.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center p-8 border border-dashed border-slate-800 rounded-xl bg-slate-950/40 text-center">
-                  <span className="text-4xl mb-2">🎬</span>
-                  <h3 className="text-sm font-bold text-slate-300 mb-1">等待分镜生成</h3>
-                  <p className="text-xs text-slate-500 max-w-sm mb-4">
-                    请在左侧输入小说剧本文本，点击【🤖 AI 智能拆解】即可实时生成分镜与 Prompt。
-                  </p>
-                  <Button type="primary" onClick={() => handleSelectSample('zhanshen')}>
-                    载入都市战神示例
-                  </Button>
+              {/* 阶段 1：资产库视图 (activeStage === 'asset') */}
+              {activeStage === 'asset' && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between bg-slate-950/70 p-3 rounded-xl border border-slate-800">
+                    <div>
+                      <h3 className="text-sm font-bold text-indigo-300 m-0">👤 角色与场景资产管理 (Asset Library)</h3>
+                      <p className="text-xs text-slate-400 m-0">资产提取 Agent 自动提炼角色外貌/服装与环境光影，修改后将标脏下游阶段并支持增量刷新 Prompt。</p>
+                    </div>
+                    <Space>
+                      <Button size="small" onClick={() => setShowCharModal(true)}>
+                        + 管理/新增角色
+                      </Button>
+                      <Button
+                        size="small"
+                        type="primary"
+                        onClick={() => runWorkflowStage('asset')}
+                        loading={isLoading}
+                        style={{ backgroundColor: '#6366f1' }}
+                      >
+                        ⚡ 重新提取资产
+                      </Button>
+                    </Space>
+                  </div>
+
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-300 mb-2">🎭 核心角色资产 ({characters.length}位)</h4>
+                    <div className="grid grid-cols-2 gap-3">
+                      {characters.map(char => (
+                        <div key={char.id} className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-indigo-400 text-sm">{char.name}</span>
+                            <Space size={4}>
+                              <Tag color={char.roleType === 'protagonist' ? 'purple' : 'gold'} className="text-[10px] m-0">
+                                {char.roleType === 'protagonist' ? '主角' : '配角'}
+                              </Tag>
+                              <Tag color="default" className="text-[10px] m-0">{char.gender === 'male' ? '男' : '女'} · {char.ageGroup}</Tag>
+                            </Space>
+                          </div>
+                          <div className="text-[11px] font-mono text-slate-300 bg-slate-900/80 p-2 rounded border border-slate-800">
+                            {char.appearancePrompt}
+                          </div>
+                          {char.crefUrl && (
+                            <div className="text-[10px] text-slate-500 truncate font-mono">
+                              cref: {char.crefUrl}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {scenes.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-300 mb-2">🏞️ 提取场景资产 ({scenes.length}处)</h4>
+                      <div className="grid grid-cols-2 gap-3">
+                        {scenes.map(sc => (
+                          <div key={sc.id} className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1.5 text-xs">
+                            <div className="font-bold text-amber-300 text-xs">{sc.name}</div>
+                            <div className="text-slate-400 text-[11px]"><span className="text-slate-500">氛围:</span> {sc.atmosphere}</div>
+                            <div className="text-slate-400 text-[11px]"><span className="text-slate-500">光影:</span> {sc.lighting}</div>
+                            <div className="text-indigo-400 text-[10px] font-mono">{sc.visualKeywords?.join(', ')}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
-              ) : (
-                shots.map((shot, idx) => {
+              )}
+
+              {/* 阶段 2：标准短剧剧本视图 (activeStage === 'script') */}
+              {activeStage === 'script' && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between bg-slate-950/70 p-3 rounded-xl border border-slate-800">
+                    <div>
+                      <h3 className="text-sm font-bold text-indigo-300 m-0">📜 影视短剧剧本 (Adapted Screenplay)</h3>
+                      <p className="text-xs text-slate-400 m-0">剧本改编 Agent 将叙事小说重构为场次、场景环境提示与角色标准对白。</p>
+                    </div>
+                    <Button
+                      size="small"
+                      type="primary"
+                      onClick={() => runWorkflowStage('script')}
+                      loading={isLoading}
+                      style={{ backgroundColor: '#6366f1' }}
+                    >
+                      ⚡ 重新改编剧本
+                    </Button>
+                  </div>
+
+                  {scriptScenes.length === 0 ? (
+                    <div className="p-8 text-center bg-slate-950/40 rounded-xl border border-dashed border-slate-800 text-slate-500 text-xs">
+                      暂无改编场次，点击【⚡ 重新改编剧本】或在顶部运行全流水线
+                    </div>
+                  ) : (
+                    scriptScenes.map((sc, sIdx) => (
+                      <div key={sc.sceneNumber || sIdx} className="p-4 bg-slate-950 rounded-xl border border-slate-800 space-y-3">
+                        <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                          <span className="font-bold text-xs text-indigo-400">
+                            第 {sc.sceneNumber} 场 · {sc.location} ({sc.time})
+                          </span>
+                          <Tag color="cyan" className="text-[11px] m-0">{sc.atmosphere}</Tag>
+                        </div>
+                        <div className="space-y-2 text-xs">
+                          {sc.paragraphs?.map((p, pIdx) => (
+                            <div key={pIdx} className="leading-relaxed">
+                              {p.speaker ? (
+                                <div className="bg-slate-900/60 p-2 rounded border border-slate-800/80">
+                                  <span className="font-bold text-indigo-400">【{p.speaker}】</span>
+                                  {p.action && <span className="text-slate-400 text-[11px]">（{p.action}）</span>}
+                                  <span className="text-slate-200">：“{p.text}”</span>
+                                </div>
+                              ) : (
+                                <div className="text-slate-400 italic pl-2 border-l-2 border-slate-700">
+                                  {p.text}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {/* 阶段 3 & 4：分镜卡片流与生图视窗 (activeStage === 'shot' || activeStage === 'prompt') */}
+              {(activeStage === 'shot' || activeStage === 'prompt') && (
+                shots.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center p-8 border border-dashed border-slate-800 rounded-xl bg-slate-950/40 text-center">
+                    <span className="text-4xl mb-2">🎬</span>
+                    <h3 className="text-sm font-bold text-slate-300 mb-1">等待分镜生成</h3>
+                    <p className="text-xs text-slate-500 max-w-sm mb-4">
+                      请在左侧输入小说剧本文本，点击【🤖 AI 智能拆解】即可实时生成分镜与 Prompt。
+                    </p>
+                    <Button type="primary" onClick={() => handleSelectSample('zhanshen')}>
+                      载入都市战神示例
+                    </Button>
+                  </div>
+                ) : (
+                  shots.map((shot, idx) => {
                   const isSelected = selectedShotIndex === idx;
                   const cardPrompt = shot.prompts?.[activeModelTab] || shot.prompts?.midjourney || '';
 
@@ -861,7 +1243,7 @@ function App() {
                     </Card>
                   );
                 })
-              )}
+              ))}
             </div>
           </section>
         </main>
@@ -1316,6 +1698,172 @@ function App() {
           ) : (
             <div className="py-8 text-center text-slate-500">未选择镜头</div>
           )}
+        </Modal>
+
+        {/* 弹窗 6：多智能体工坊配置中心 (Agent Hub Modal) */}
+        <Modal
+          title={
+            <div className="flex items-center justify-between pr-8">
+              <span className="text-white font-bold flex items-center gap-2">
+                🧩 多智能体工坊配置中心 (Pluggable Agent Hub)
+              </span>
+              <Button
+                size="small"
+                onClick={() => {
+                  const synced = { ...agentConfigs };
+                  ['asset', 'script', 'shot', 'prompt'].forEach(k => {
+                    synced[k] = {
+                      ...synced[k],
+                      llmConfig: { ...llmConfig }
+                    };
+                  });
+                  setAgentConfigs(synced);
+                  try {
+                    localStorage.setItem('asbs_agent_configs', JSON.stringify(synced));
+                  } catch {}
+                  message.success('已一键同步主大模型配置到所有 Agent！');
+                }}
+                className="text-xs bg-indigo-950/40 border-indigo-500/40 text-indigo-300"
+              >
+                🔄 同步主模型至全部 Agent
+              </Button>
+            </div>
+          }
+          open={showAgentHubModal}
+          onCancel={() => setShowAgentHubModal(false)}
+          onOk={() => {
+            setShowAgentHubModal(false);
+            try {
+              localStorage.setItem('asbs_agent_configs', JSON.stringify(agentConfigs));
+            } catch {}
+            message.success('Agent 工坊配置已生效并持久化！');
+          }}
+          okText="保存全部配置"
+          cancelText="取消"
+          width={780}
+        >
+          <div className="pt-2 space-y-4 max-h-[65vh] overflow-y-auto pr-1">
+            <p className="text-xs text-slate-400 mb-2">
+              工作流由 4 个专业 Agent 组成，每个 Agent 均支持独立启用/跳过、独立配置专属模型（如剧本采用 DeepSeek-V3，视觉 Prompt 采用 GPT-4o 或通用模型），离线断网时自动启用容错规则自愈。
+            </p>
+            {[
+              { id: 'asset', title: '1. 资产提取 Agent (Asset Extractor)', role: '解析原著提炼角色外观服装特征与场景光影资产' },
+              { id: 'script', title: '2. 剧本改编 Agent (Scriptwriter)', role: '将叙事小说重构为场次结构、对白与舞台提示' },
+              { id: 'shot', title: '3. 镜头切分 Agent (Director Shot)', role: '按工业节奏与视听语言切分景别、运镜与动作' },
+              { id: 'prompt', title: '4. 生图 Prompt Agent (Visual Prompt)', role: '融合角色特征与镜头指令生成三模型专业英文提示词' }
+            ].map(agent => {
+              const cfg = agentConfigs[agent.id] || {
+                id: agent.id,
+                name: agent.title,
+                enabled: true,
+                llmConfig: { baseUrl: llmConfig.baseUrl, apiKey: llmConfig.apiKey, model: llmConfig.model, temperature: 0.7 }
+              };
+              return (
+                <div key={agent.id} className="p-3.5 bg-slate-950 rounded-xl border border-slate-800 space-y-2.5">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-xs text-indigo-300">{agent.title}</span>
+                      <span className="text-[11px] text-slate-500">| {agent.role}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-400">{cfg.enabled ? '已启用' : '跳过(直通)'}</span>
+                      <Switch
+                        checked={cfg.enabled}
+                        onChange={(val) => {
+                          const updated = {
+                            ...agentConfigs,
+                            [agent.id]: { ...cfg, enabled: val }
+                          };
+                          setAgentConfigs(updated);
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {cfg.enabled && (
+                    <div className="grid grid-cols-2 gap-3 text-xs pt-1">
+                      <div>
+                        <label className="text-slate-400 block mb-1">Base URL (端点):</label>
+                        <Input
+                          size="small"
+                          value={cfg.llmConfig?.baseUrl}
+                          onChange={(e) => {
+                            const updated = {
+                              ...agentConfigs,
+                              [agent.id]: {
+                                ...cfg,
+                                llmConfig: { ...cfg.llmConfig, baseUrl: e.target.value }
+                              }
+                            };
+                            setAgentConfigs(updated);
+                          }}
+                          placeholder="https://api.deepseek.com/v1"
+                          style={{ fontFamily: 'monospace' }}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-slate-400 block mb-1">API Key:</label>
+                        <Input.Password
+                          size="small"
+                          value={cfg.llmConfig?.apiKey}
+                          onChange={(e) => {
+                            const updated = {
+                              ...agentConfigs,
+                              [agent.id]: {
+                                ...cfg,
+                                llmConfig: { ...cfg.llmConfig, apiKey: e.target.value }
+                              }
+                            };
+                            setAgentConfigs(updated);
+                          }}
+                          placeholder="sk-..."
+                          style={{ fontFamily: 'monospace' }}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-slate-400 block mb-1">模型代号 (Model):</label>
+                        <Input
+                          size="small"
+                          value={cfg.llmConfig?.model}
+                          onChange={(e) => {
+                            const updated = {
+                              ...agentConfigs,
+                              [agent.id]: {
+                                ...cfg,
+                                llmConfig: { ...cfg.llmConfig, model: e.target.value }
+                              }
+                            };
+                            setAgentConfigs(updated);
+                          }}
+                          placeholder="deepseek-chat / gpt-4o"
+                          style={{ fontFamily: 'monospace' }}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-slate-400 block mb-1">采样温度 (Temperature: {cfg.llmConfig?.temperature ?? 0.7}):</label>
+                        <Slider
+                          min={0}
+                          max={1.5}
+                          step={0.1}
+                          value={cfg.llmConfig?.temperature ?? 0.7}
+                          onChange={(val) => {
+                            const updated = {
+                              ...agentConfigs,
+                              [agent.id]: {
+                                ...cfg,
+                                llmConfig: { ...cfg.llmConfig, temperature: val }
+                              }
+                            };
+                            setAgentConfigs(updated);
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </Modal>
       </div>
     </ConfigProvider>

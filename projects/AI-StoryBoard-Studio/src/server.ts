@@ -8,6 +8,7 @@ import { JianYingSrtEngine } from './engines/srtGenerator.ts';
 import { PromptAdapterEngine } from './engines/promptAdapter.ts';
 import { ExportFormatter } from './engines/exportFormatter.ts';
 import { LLMStoryboardService } from './engines/llmService.ts';
+import { WorkflowEngine } from './engines/workflowEngine.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,6 +19,7 @@ const srtEngine = new JianYingSrtEngine();
 const promptEngine = new PromptAdapterEngine();
 const exportFormatter = new ExportFormatter();
 const llmService = new LLMStoryboardService();
+const workflowEngine = new WorkflowEngine();
 
 const MIME_MAP: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -72,6 +74,43 @@ export function createRequestHandler() {
 
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({ code: 0, data: { doc, outline, shots } }));
+      return;
+    }
+
+    // API 路由: 多智能体工作流全流程串行运行
+    if (pathname === '/api/v1/workflow/run-all' && req.method === 'POST') {
+      const body = await parseBody();
+      let ctx = body.context;
+      if (!ctx) {
+        ctx = workflowEngine.createInitialContext(body.novelText || '', body.aspectRatio || '9:16');
+        if (body.characters?.length) ctx.characters = body.characters;
+        if (body.agentConfigs) ctx.agentConfigs = { ...ctx.agentConfigs, ...body.agentConfigs };
+      }
+      const resultCtx = await workflowEngine.runAll(ctx);
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ code: 0, data: resultCtx }));
+      return;
+    }
+
+    // API 路由: 多智能体工作流单阶段独立运行
+    if (pathname === '/api/v1/workflow/run-stage' && req.method === 'POST') {
+      const body = await parseBody();
+      const stage = body.stage;
+      const ctx = body.context || workflowEngine.createInitialContext(body.novelText || '', body.aspectRatio || '9:16');
+      if (body.agentConfigs) ctx.agentConfigs = { ...ctx.agentConfigs, ...body.agentConfigs };
+      const resultCtx = await workflowEngine.runStage(ctx, stage);
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ code: 0, data: resultCtx }));
+      return;
+    }
+
+    // API 路由: 增量重跑生图 Prompt (保护用户镜头动作对白)
+    if (pathname === '/api/v1/workflow/incremental-prompts' && req.method === 'POST') {
+      const body = await parseBody();
+      const ctx = body.context;
+      const resultCtx = await workflowEngine.runIncrementalPrompts(ctx);
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ code: 0, data: resultCtx }));
       return;
     }
 

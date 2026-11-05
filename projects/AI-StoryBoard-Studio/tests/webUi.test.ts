@@ -123,6 +123,25 @@ describe('AI-StoryBoard-Studio Web API & UI 集成测试', () => {
     assert.ok(json.data.shot.characterAction.includes('润色指令: 改为特写'));
   });
 
+  test('TC-WEB-08: POST /api/v1/workflow/run-all 能够成功驱动多智能体工作流执行', async () => {
+    const handler = createRequestHandler();
+    const payload = {
+      novelText: '顾北辰眼神如寒星，嘴角掠过一丝冷笑：“三年之期已到，江城该变天了。”\n苏清影脸色惨白。',
+      aspectRatio: '9:16'
+    };
+
+    const res = await simulateRequest(handler, 'POST', '/api/v1/workflow/run-all', payload);
+    assert.strictEqual(res.status, 200);
+    const json = res.json();
+    assert.strictEqual(json.code, 0);
+    assert.strictEqual(json.data.stageStatuses.asset, 'ready');
+    assert.strictEqual(json.data.stageStatuses.script, 'ready');
+    assert.strictEqual(json.data.stageStatuses.shot, 'ready');
+    assert.strictEqual(json.data.stageStatuses.prompt, 'ready');
+    assert.ok(json.data.shots.length > 0);
+    assert.ok(json.data.shots[0].prompts.midjourney);
+  });
+
   test('TC-WEB-06: 验证 app.tsx 前端运行时无未定义变量且首屏分镜生成成功', () => {
     const appPath = path.join(__dirname, '../src/ui/app.tsx');
     const babelPath = path.join(__dirname, '../src/ui/vendor/babel.min.js');
@@ -220,5 +239,27 @@ describe('AI-StoryBoard-Studio Web API & UI 集成测试', () => {
     assert.ok(cssCode.includes('#020617 !important'), 'styles.css 必须包含深黑背景保底');
     assert.ok(cssCode.includes('#34d399 !important'), 'styles.css 必须包含高对比度文本色保底');
     assert.ok(appCode.includes('#020617') && appCode.includes('#34d399'), 'app.tsx 必须内联深色背景与文本色防止白底白字');
+  });
+
+  test('TC-WEB-09: 验证多智能体工作流流水线看板、阶段切换视图与 Agent 工坊配置弹窗', () => {
+    const appPath = path.join(__dirname, '../src/ui/app.tsx');
+    const appCode = fs.readFileSync(appPath, 'utf-8');
+
+    // 1. 验证流水线 Pipeline Stepper 节点定义
+    assert.ok(appCode.includes('资产提取 Agent'), '必须包含资产提取 Agent 节点');
+    assert.ok(appCode.includes('剧本改编 Agent'), '必须包含剧本改编 Agent 节点');
+    assert.ok(appCode.includes('镜头切分 Agent'), '必须包含镜头切分 Agent 节点');
+    assert.ok(appCode.includes('生图 Prompt Agent'), '必须包含生图 Prompt Agent 节点');
+    assert.ok(appCode.includes('启动全流水线'), '必须提供全流水线启动按钮');
+    assert.ok(appCode.includes('增量更新 Prompt'), '必须提供脏标记感知的增量更新按钮');
+
+    // 2. 验证阶段切换视图与状态响应
+    assert.ok(appCode.includes('角色与场景资产管理'), '必须包含资产阶段可视化卡片');
+    assert.ok(appCode.includes('影视短剧剧本'), '必须包含剧本阶段场次渲染');
+
+    // 3. 验证多智能体工坊配置中心 (Agent Hub Modal)
+    assert.ok(appCode.includes('showAgentHubModal'), '必须包含 Agent 工坊弹窗状态控制');
+    assert.ok(appCode.includes('多智能体工坊配置中心'), '弹窗标题必须匹配工坊配置中心');
+    assert.ok(appCode.includes('同步主模型至全部 Agent'), '必须支持一键同步主大模型到四大 Agent');
   });
 });

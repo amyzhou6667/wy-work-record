@@ -155,3 +155,76 @@ export interface AIRefineShotRequest {
   aspectRatio: AspectRatio;
   llmConfig?: LLMConfig;
 }
+
+/**
+ * 工作流流水线阶段枚举
+ */
+export type PipelineStage = 'asset' | 'script' | 'shot' | 'prompt';
+
+/**
+ * 阶段执行状态
+ */
+export type StageStatus = 'idle' | 'running' | 'ready' | 'error' | 'skipped';
+
+/**
+ * 场景资产
+ */
+export interface SceneAsset {
+  id: string;
+  name: string;
+  lightingAtmosphere: string;
+  environmentPrompt: string;
+}
+
+/**
+ * 短剧标准剧本场次与对白
+ */
+export interface ScriptDialogue {
+  speaker: string;
+  emotion: string;
+  text: string;
+  isVoiceover: boolean;
+}
+
+export interface ScriptScene {
+  sceneNumber: number;
+  location: string;
+  timeOfDay: 'DAY' | 'NIGHT' | 'DUSK' | 'DAWN';
+  atmosphere: string;
+  actionDescription: string;
+  dialogues: ScriptDialogue[];
+}
+
+/**
+ * Agent 独立插件配置
+ */
+export interface AgentPluginConfig {
+  id: PipelineStage;
+  name: string;
+  enabled: boolean;
+  llmConfig: {
+    baseUrl: string;
+    apiKey: string;
+    model: string;
+    temperature: number;
+  };
+  systemPromptTemplate?: string;
+}
+
+/**
+ * 工作流流水线全局上下文
+ */
+export interface WorkflowPipelineContext {
+  novelText: string;
+  aspectRatio: AspectRatio;
+  stageStatuses: Record<PipelineStage, StageStatus>;
+  dirtyFlags: Record<PipelineStage, boolean>;
+  characters: CharacterAsset[];
+  scenes: SceneAsset[];
+  scriptScenes: ScriptScene[];
+  shots: StoryboardShot[];
+  agentConfigs: Record<PipelineStage, AgentPluginConfig>;
+  lastExecutedAt?: number;
+}
+
+
