@@ -699,7 +699,7 @@ function App() {
         </header>
 
         {/* 多智能体可插拔工作流流水线看板 (Pipeline Stepper) */}
-        <div className="flex-none bg-slate-900/90 border-b border-slate-800 px-6 py-2 flex items-center justify-between shadow-sm">
+        <div className="flex-none bg-slate-900/90 border-b border-slate-800 px-4 py-2 flex items-center justify-between shadow-sm overflow-x-auto gap-3">
           <div className="flex items-center gap-2">
             {[
               { id: 'asset', num: 1, name: '资产提取 Agent', desc: `${characters.length}人 / ${scenes.length}景` },
@@ -780,10 +780,10 @@ function App() {
           </Space>
         </div>
 
-        {/* 主体【双栏聚焦工作区】：左栏剧本拆解与段落 / 右侧主栏影视级视觉分镜流 (生图 Prompt 弹窗化) */}
+        {/* 主体【双栏聚焦工作区】：左栏剧本拆解与段落 (四等分占一，25% 宽) / 右侧主栏影视级视觉分镜流 (四等分占三，75% 宽) */}
         <main className="flex-1 flex overflow-hidden p-3 gap-3">
-          {/* 左栏 (32% 宽度)：小说剧本输入与控制区 */}
-          <section className="w-[32%] flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
+          {/* 左栏 (四等分占一，25% 宽度)：小说剧本输入与控制区 */}
+          <section className="w-1/4 flex-none min-w-0 flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
             <div className="px-3.5 py-2.5 border-b border-slate-800 flex items-center justify-between bg-slate-900/90">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-slate-200">📖 小说剧本文本</span>
@@ -888,8 +888,8 @@ function App() {
             </div>
           </section>
 
-          {/* 右侧主栏 (flex-1 宽度全展开)：影视级分镜瀑布流卡片 */}
-          <section className="flex-1 flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
+          {/* 右侧主栏 (四等分占三，75% 宽度)：影视级视觉分镜流 */}
+          <section className="w-3/4 flex-1 min-w-0 flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
             <div className="px-4 py-2 border-b border-slate-800 flex items-center justify-between bg-slate-900/90">
               <div className="flex items-center gap-3">
                 <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800">
@@ -1167,14 +1167,14 @@ function App() {
                       )}
 
                       <div className="text-[11px] text-slate-400 mb-2 flex items-center justify-between">
-                        <span className="truncate max-w-[320px]">💡 {shot.environmentLighting}</span>
+                        <span className="truncate flex-1 mr-3">💡 <span className="text-slate-300">{shot.environmentLighting}</span></span>
                         <span
                           onClick={(e) => {
                             e.stopPropagation();
                             setPromptTargetShot(shot);
                             setShowPromptModal(true);
                           }}
-                          className="text-[11px] text-indigo-400 font-semibold hover:underline cursor-pointer"
+                          className="text-[11px] text-indigo-400 font-semibold hover:underline cursor-pointer flex-none"
                         >
                           👉 弹窗查看/编辑完整 Prompt
                         </span>
