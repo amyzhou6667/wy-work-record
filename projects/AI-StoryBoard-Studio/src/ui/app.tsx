@@ -140,6 +140,7 @@ function App() {
   const [showRefineModal, setShowRefineModal] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showPromptModal, setShowPromptModal] = useState(false);
+  const [showGuideModal, setShowGuideModal] = useState(false);
 
   const [promptTargetShot, setPromptTargetShot] = useState(null);
   const [refineTargetShot, setRefineTargetShot] = useState(null);
@@ -626,6 +627,15 @@ function App() {
 
           {/* 顶部工具栏 (全部使用 AntD 组件) */}
           <Space size="middle" align="center">
+            {/* 新手流程指引 */}
+            <Button
+              size="small"
+              onClick={() => setShowGuideModal(true)}
+              className="bg-indigo-950/60 text-indigo-300 border-indigo-500/40 hover:bg-indigo-900/60 text-xs font-semibold"
+            >
+              📖 使用流程指引
+            </Button>
+
             {/* 画幅切换 */}
             <div className="flex items-center bg-slate-800 p-0.5 rounded-lg border border-slate-700">
               <Button
@@ -783,7 +793,10 @@ function App() {
         {/* 主体【双栏聚焦工作区】：左栏剧本拆解与段落 (四等分占一，25% 宽) / 右侧主栏影视级视觉分镜流 (四等分占三，75% 宽) */}
         <main className="flex-1 flex overflow-hidden p-3 gap-3">
           {/* 左栏 (四等分占一，25% 宽度)：小说剧本输入与控制区 */}
-          <section className="w-1/4 flex-none min-w-0 flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
+          <section
+            style={{ width: '25%', flexShrink: 0, minWidth: 0 }}
+            className="w-1/4 flex-none min-w-0 flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl"
+          >
             <div className="px-3.5 py-2.5 border-b border-slate-800 flex items-center justify-between bg-slate-900/90">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-slate-200">📖 小说剧本文本</span>
@@ -827,8 +840,8 @@ function App() {
                 className="focus:border-indigo-500 rounded-lg selection:bg-indigo-600 selection:text-white"
               />
 
-              {/* 智能拆解按钮组 */}
-              <div className="flex items-center gap-2">
+              {/* 核心主操作：一键运行流水线 */}
+              <div className="flex flex-col gap-1.5">
                 <Button
                   type="primary"
                   onClick={handleAIDecompose}
@@ -838,25 +851,24 @@ function App() {
                     borderColor: '#4f46e5',
                     color: '#ffffff',
                     fontWeight: 'bold',
-                    fontSize: '12px'
+                    fontSize: '13px',
+                    height: '36px'
                   }}
-                  className="flex-1 shadow-md shadow-indigo-600/30"
+                  className="w-full shadow-md shadow-indigo-600/30"
                 >
-                  🤖 AI 智能拆解 {isLLMConfigured ? `(${llmConfig.model})` : ''}
+                  ⚡ 一键启动多智能体全流水线
                 </Button>
-                <Button
-                  onClick={handleOfflineDecompose}
-                  disabled={isLoading}
-                  style={{
-                    backgroundColor: '#1e293b',
-                    borderColor: '#334155',
-                    color: '#cbd5e1',
-                    fontSize: '12px'
-                  }}
-                  title="本地离线规则秒级拆解"
-                >
-                  ⚡ 本地规则
-                </Button>
+                <div className="flex items-center justify-between text-[11px] text-slate-400 px-0.5">
+                  <span className="text-slate-500">自动: 资产➔剧本➔分镜➔Prompt</span>
+                  <button
+                    onClick={handleOfflineDecompose}
+                    disabled={isLoading}
+                    className="text-slate-400 hover:text-indigo-300 underline cursor-pointer bg-transparent border-none p-0 text-[11px]"
+                    title="断网或免API时的秒级规则拆解"
+                  >
+                    ⚡ 本地离线规则
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -889,44 +901,17 @@ function App() {
           </section>
 
           {/* 右侧主栏 (四等分占三，75% 宽度)：影视级视觉分镜流 */}
-          <section className="w-3/4 flex-1 min-w-0 flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
+          <section
+            style={{ width: '75%', flex: '1 1 75%', minWidth: 0 }}
+            className="w-3/4 flex-1 min-w-0 flex flex-col bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-xl"
+          >
             <div className="px-4 py-2 border-b border-slate-800 flex items-center justify-between bg-slate-900/90">
-              <div className="flex items-center gap-3">
-                <div className="flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800">
-                  <button
-                    onClick={() => setActiveStage('shot')}
-                    className={`px-2.5 py-1 text-xs font-bold rounded transition ${
-                      activeStage === 'shot' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    🎬 分镜流 ({shots.length})
-                  </button>
-                  <button
-                    onClick={() => setActiveStage('asset')}
-                    className={`px-2.5 py-1 text-xs font-bold rounded transition ${
-                      activeStage === 'asset' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    👤 资产库 ({characters.length}人/{scenes.length}景)
-                  </button>
-                  <button
-                    onClick={() => setActiveStage('script')}
-                    className={`px-2.5 py-1 text-xs font-bold rounded transition ${
-                      activeStage === 'script' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    📜 剧本 ({scriptScenes.length}场)
-                  </button>
-                  <button
-                    onClick={() => setActiveStage('prompt')}
-                    className={`px-2.5 py-1 text-xs font-bold rounded transition ${
-                      activeStage === 'prompt' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    🎨 生图 Prompt 视窗
-                  </button>
-                </div>
-                <span className="text-xs font-bold text-slate-200">🎬 工业级视觉分镜流</span>
+              <div className="flex items-center gap-2.5">
+                <span className="text-xs font-bold text-slate-200">
+                  {activeStage === 'asset' && '👤 角色与场景资产管理 (Asset)'}
+                  {activeStage === 'script' && '📜 影视短剧标准剧本 (Script)'}
+                  {(activeStage === 'shot' || activeStage === 'prompt') && '🎬 工业级视觉分镜流 (Shot & Prompt)'}
+                </span>
                 <Tag color="indigo" className="font-semibold text-[11px] m-0 border-indigo-500/30">
                   共 {shots.length} 镜 / 约 {Math.round(shots.reduce((acc, s) => acc + (s.durationSec || 2.5), 0))} 秒
                 </Tag>
@@ -1199,46 +1184,26 @@ function App() {
                           <span className="text-slate-500 mr-1 font-sans text-[10px]">[{activeModelTab.toUpperCase()}]:</span>
                           {cardPrompt || '提示词生成中...'}
                         </div>
-                        <Space size={4}>
-                          <Button
-                            size="small"
-                            type="primary"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              copyToClipboard(cardPrompt, `card_${shot.id}`);
-                            }}
-                            style={{
-                              backgroundColor: copiedKey === `card_${shot.id}` ? '#10b981' : '#1e293b',
-                              borderColor: '#334155',
-                              color: copiedKey === `card_${shot.id}` ? '#ffffff' : '#34d399',
-                              fontSize: '11px',
-                              height: '22px',
-                              padding: '0 8px',
-                              fontWeight: 'bold'
-                            }}
-                          >
-                            {copiedKey === `card_${shot.id}` ? '✓ 已复制' : '📋 复制'}
-                          </Button>
-                          <Button
-                            size="small"
-                            type="primary"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setPromptTargetShot(shot);
-                              setShowPromptModal(true);
-                            }}
-                            style={{
-                              backgroundColor: '#6366f1',
-                              borderColor: '#4f46e5',
-                              fontSize: '11px',
-                              height: '22px',
-                              padding: '0 8px',
-                              fontWeight: 'bold'
-                            }}
-                          >
-                            🔍 弹窗
-                          </Button>
-                        </Space>
+                        <Button
+                          size="small"
+                          type="primary"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            copyToClipboard(cardPrompt, `card_${shot.id}`);
+                          }}
+                          style={{
+                            backgroundColor: copiedKey === `card_${shot.id}` ? '#10b981' : '#1e293b',
+                            borderColor: '#334155',
+                            color: copiedKey === `card_${shot.id}` ? '#ffffff' : '#34d399',
+                            fontSize: '11px',
+                            height: '24px',
+                            padding: '0 10px',
+                            fontWeight: 'bold',
+                            flexShrink: 0
+                          }}
+                        >
+                          {copiedKey === `card_${shot.id}` ? '✓ 已复制 Prompt' : '📋 一键复制 Prompt'}
+                        </Button>
                       </div>
                     </Card>
                   );
@@ -1863,6 +1828,51 @@ function App() {
                 </div>
               );
             })}
+          </div>
+        </Modal>
+
+        {/* 弹窗 7：新手极简操作流程指引 (Workflow Guide Modal) */}
+        <Modal
+          title={<span className="text-white font-bold flex items-center gap-2">💡 AI-StoryBoard-Studio 极简操作指南</span>}
+          open={showGuideModal}
+          onCancel={() => setShowGuideModal(false)}
+          footer={<Button type="primary" onClick={() => setShowGuideModal(false)}>我知道了，立即制作</Button>}
+          width={680}
+        >
+          <div className="pt-2 space-y-4 text-xs">
+            <p className="text-slate-300 leading-relaxed m-0">
+              欢迎使用 AI-StoryBoard-Studio！系统采用好莱坞工业短剧制作标准，由 4 个专业 AI Agent 自动协同编排。您只需记住 3 步即可轻松出片：
+            </p>
+
+            <div className="space-y-3">
+              <div className="p-3 bg-slate-950 rounded-xl border border-indigo-500/30 flex items-start gap-3">
+                <span className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xs flex-none">1</span>
+                <div>
+                  <h4 className="font-bold text-indigo-300 text-xs mb-1">【贴小说 / 选范例】</h4>
+                  <p className="text-slate-400 m-0">在左侧文本框粘贴您的小说文本（也可在右上角【范例】中一键载入都市战神、东方玄幻或古风权谋剧本），顶部支持自由切换 📱 9:16 竖屏短剧 或 🎬 16:9 横屏电影画幅。</p>
+                </div>
+              </div>
+
+              <div className="p-3 bg-slate-950 rounded-xl border border-indigo-500/30 flex items-start gap-3">
+                <span className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xs flex-none">2</span>
+                <div>
+                  <h4 className="font-bold text-indigo-300 text-xs mb-1">【一键跑全流水线】</h4>
+                  <p className="text-slate-400 m-0">点击左侧醒目的【⚡ 一键启动多智能体全流水线】大按钮。系统将自动推进 4 步：① 提取角色与场景外观 ➔ ② 改编为影视标准分场 ➔ ③ 切分专业景别与运镜 ➔ ④ 输出 Midjourney / Flux / 即梦三模型工业级英文生图词。</p>
+                </div>
+              </div>
+
+              <div className="p-3 bg-slate-950 rounded-xl border border-indigo-500/30 flex items-start gap-3">
+                <span className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-xs flex-none">3</span>
+                <div>
+                  <h4 className="font-bold text-indigo-300 text-xs mb-1">【复制 Prompt 生图 ➔ 导出字幕】</h4>
+                  <p className="text-slate-400 m-0">在右侧分镜卡片底部直接点击【📋 一键复制 Prompt】，贴进 Midjourney / Flux / 即梦等 AI 软件即可生成电影级画面；剪辑时点击右上角【🚀 导出中心】，即可一键下载剪映标准 SRT 字幕与影视分镜母表 (.CSV)。</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-2.5 rounded-lg bg-indigo-950/40 border border-indigo-500/20 text-[11px] text-slate-400">
+              💡 进阶技巧：在顶部点击任意 Agent 节点（如 1.资产提取 或 2.剧本改编），可随时在右侧检视与编辑中间产物；点击右上角【⚙️ AI 模型配置】可填入您的 DeepSeek / OpenAI API Key 享受更高画质理解。
+            </div>
           </div>
         </Modal>
       </div>
