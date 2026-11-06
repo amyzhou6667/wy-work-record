@@ -208,4 +208,37 @@ describe('Multi-Agent Pluggable Workflow Engine (多智能体可插拔工作流�
     assert.strictEqual(scene.dialogues[0].text, '回江城。');
     assert.strictEqual(scene.dialogues[0].emotion, '冰冷决绝');
   });
+
+  test('TC-WF-08: DirectorShotAgent 深度依据 scriptScenes 与角色库切分镜头并完成角色ID绑定', async () => {
+    const agent = new DirectorShotAgent();
+    const mockChars = [
+      { id: 'c_xiaoyan', name: '萧炎', roleType: 'protagonist' as const, gender: 'male' as const, ageGroup: '18yo', appearancePrompt: 'young black robed warrior' }
+    ];
+    const scriptScenes = [
+      {
+        sceneNumber: 1,
+        location: '外景 - 乌坦城演武场',
+        timeOfDay: 'DAY' as const,
+        atmosphere: '震撼万分',
+        actionDescription: '玄重尺重重砸在青石板上，气浪翻滚。',
+        dialogues: [
+          { speaker: '萧炎', emotion: '眼神坚毅，下颌微扬', text: '三十年河东，莫欺少年穷！', isVoiceover: false }
+        ]
+      }
+    ];
+
+    const result = await agent.execute(
+      { novelText: '萧炎踏步上前。', scriptScenes, aspectRatio: '9:16' },
+      { id: 'shot', name: '镜头切分', enabled: true, llmConfig: { baseUrl: '', apiKey: '', model: '', temperature: 0.7 } },
+      { characters: mockChars } as any
+    );
+
+    assert.ok(result.data.length >= 2, '应包含建立镜头与对白镜头');
+    const dialogueShot = result.data.find(s => s.dialogue?.text.includes('莫欺少年穷'));
+    assert.ok(dialogueShot, '必须生成台词镜头');
+    assert.strictEqual(dialogueShot?.dialogue?.speaker, '萧炎');
+    assert.ok(dialogueShot?.characterIds.includes('c_xiaoyan'), '台词镜头必须绑定角色ID c_xiaoyan');
+    assert.ok(dialogueShot?.shotSize, '必须分配影视专业景别');
+    assert.ok(dialogueShot?.cameraMovement, '必须分配影视专业机位运镜');
+  });
 });
