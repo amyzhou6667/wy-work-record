@@ -1,0 +1,21 @@
+{
+  "name": "project-reviewer",
+  "version": "1.0.0",
+  "description": "ProjectReviewer - 基于工程项目代码的智能模拟面试官 (TypeScript)",
+  "type": "module",
+  "bin": {
+    "reviewer": "./src/cli.ts"
+  },
+  "scripts": {
+    "start": "node src/cli.ts",
+    "test": "node --test tests/*.test.ts"
+  },
+  "keywords": [
+    "interview",
+    "reviewer",
+    "agent",
+    "typescript"
+  ],
+  "author": "",
+  "license": "ISC"
+}
